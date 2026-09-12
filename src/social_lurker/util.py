@@ -1,96 +1,165 @@
-import calendar
+"""Bounded serialization, safe paths and short OS locks."""
+
 import contextlib
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
+import re
 import tempfile
+import threading
 import time
+import unicodedata
 import uuid
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from urllib.parse import parse_qsl, urlsplit
 
 from .errors import LurkerError, require
 
+_local = threading.local()
+RANK = {"poll.lock": 1, "request.lock": 2, "state.lock": 3}
 
-def now():
-    return time.time()
+
+def canonical(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def token():
+def parse_json(raw, maximum=1024 * 1024):
+    require(len(raw.encode() if isinstance(raw, str) else raw) <= maximum, "INPUT_TOO_LARGE")
+
+    def unique(pairs):
+        obj = {}
+        for k, v in pairs:
+            require(k not in obj, "JSON_DUPLICATE_KEY")
+            obj[k] = v
+        return obj
+
+    def invalid(_):
+        raise LurkerError("JSON_INVALID")
+
+    try:
+        return json.loads(raw, object_pairs_hook=unique, parse_constant=invalid)
+    except (ValueError, UnicodeError, RecursionError):
+        raise LurkerError("JSON_INVALID") from None
+
+
+def ident():
     return str(uuid.uuid4())
 
 
-def digest(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def digest(value):
+    return hashlib.sha256(value if isinstance(value, bytes) else value.encode()).hexdigest()
 
 
-def json_text(value):
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+def safe_path(path):
+    p = Path(path).absolute()
+    require(p != Path(p.anchor) and ".." not in p.parts, "UNSAFE_PATH")
+    require(not any(x.is_symlink() for x in (p, *p.parents)), "SYMLINK_REJECTED")
+    return p
 
 
-def atomic_write(path, data, mode=0o600):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp = tempfile.mkstemp(prefix=".tmp-", dir=path.parent)
+def fsync_dir(path):
+    fd = os.open(path, os.O_RDONLY)
     try:
-        os.fchmod(fd, mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_bytes(path, data, mode=0o600):
+    path = safe_path(path)
+    fd, tmp = tempfile.mkstemp(prefix="." + path.name + "-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            os.fchmod(stream.fileno(), mode)
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp, path)
-        dfd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(dfd)
-        finally:
-            os.close(dfd)
+        os.replace(tmp, path)
+        fsync_dir(path.parent)
     finally:
-        Path(temp).unlink(missing_ok=True)
+        Path(tmp).unlink(missing_ok=True)
 
 
-def write_json(path, value):
-    atomic_write(path, json_text(value) + "\n")
-
-
-def safe_path(root, relative):
-    root = Path(root).resolve()
-    rel = Path(relative)
-    require(not rel.is_absolute() and ".." not in rel.parts and rel.parts, "UNSAFE_PATH", "拒绝越界路径")
-    current = root
-    for part in rel.parts:
-        current = current / part
-        require(not current.is_symlink(), "UNSAFE_PATH", "拒绝符号链接路径")
-    require(current.resolve().is_relative_to(root), "UNSAFE_PATH", "拒绝越界路径")
-    return current
+def atomic_json(path, value):
+    atomic_bytes(path, (canonical(value) + "\n").encode())
 
 
 @contextlib.contextmanager
-def file_lock(path):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+") as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise LurkerError("BUSY", "已有执行者，等待下次唤醒") from None
+def lock(root, name, timeout=5):
+    path = safe_path(Path(root) / name)
+    stack = getattr(_local, "locks", [])
+    require(not stack or RANK[name] > stack[-1], "LOCK_ORDER_INVALID")
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    started = time.monotonic()
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() - started >= timeout:
+                    raise LurkerError("INSTANCE_BUSY", "实例忙，请稍后再试", retryable=True) from None
+                time.sleep(0.02)
+        _local.locks = stack + [RANK[name]]
         try:
             yield
         finally:
-            fcntl.flock(stream, fcntl.LOCK_UN)
+            _local.locks = stack
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
-def time_range(end, amount, unit, timezone):
-    require(type(amount) is int and amount > 0, "INVALID_RANGE", "时长必须为正整数")
-    require(unit in {"hours", "days", "months", "years"}, "INVALID_RANGE", "不支持的时间单位")
-    date = datetime.fromtimestamp(end, ZoneInfo(timezone))
-    if unit in {"hours", "days"}:
-        start = datetime.fromtimestamp(end, UTC) - timedelta(**{unit: amount})
-    else:
-        months = amount * (12 if unit == "years" else 1)
-        year, month0 = divmod(date.year * 12 + date.month - 1 - months, 12)
-        require(year >= 1, "INVALID_RANGE", "时间范围过大")
-        month = month0 + 1
-        start = date.replace(year=year, month=month, day=min(date.day, calendar.monthrange(year, month)[1]))
-    return start.timestamp(), end
+def public_url(value, domains=None):
+    if not isinstance(value, str) or not value or len(value) > 8192 or any(c.isspace() for c in value):
+        return None
+    try:
+        u = urlsplit(value)
+        host = u.hostname or ""
+        if u.scheme != "https" or u.username or u.password or u.port not in (None, 443) or not host:
+            return None
+        if any(unicodedata.category(c).startswith("C") for c in value) or "\\" in value:
+            return None
+        if host == "localhost" or "." not in host or host.endswith((".local", ".internal", ".localhost")):
+            return None
+        try:
+            if not ipaddress.ip_address(host).is_global:
+                return None
+        except ValueError:
+            pass
+        if domains and not any(host == d or host.endswith("." + d) for d in domains):
+            return None
+        if any(
+            re.search(r"(?i)(token|cookie|authorization|api.?key|credential|password)", k)
+            for k, _ in parse_qsl(u.query)
+        ):
+            return None
+        return value
+    except ValueError:
+        return None
+
+
+def clean_text(value, maximum):
+    require(isinstance(value, str), "METADATA_INVALID")
+    value = "".join(c for c in value if not unicodedata.category(c).startswith("C") or c in "\n\t")
+    return " ".join(value.split())[:maximum]
+
+
+def platform_id(value):
+    require(
+        (isinstance(value, str) and 0 < len(value) <= 512) or (type(value) is int and value > 0),
+        "IDENTITY_INVALID",
+    )
+    text = str(value)
+    require(not any(unicodedata.category(c).startswith("C") or c.isspace() for c in text), "IDENTITY_INVALID")
+    return text
+
+
+def semver(value):
+    require(
+        isinstance(value, str) and re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", value),
+        "VERSION_INVALID",
+    )
+    return tuple(map(int, value.split(".")))

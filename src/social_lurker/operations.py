@@ -1,239 +1,469 @@
-from .errors import require
-from .store import OPEN_RUNS
-from .util import now, time_range
+"""Local setup evidence, explicit exports and narrowly scoped instance maintenance."""
+
+import copy
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+from . import __version__
+from .config import validate
+from .errors import LurkerError, require
+from .releases import AUTHORITY, package_bytes, prepare, verify_directory
+from .schedule import context, next_slot
+from .sources import ADAPTER_VERSION, TikHub
+from .state import array
+from .util import atomic_bytes, atomic_json, canonical, digest, lock, safe_path
 
 
-def prepare_collection(store, account_id, payload, request_id, timezone):
-    previous = store.one("SELECT * FROM collection_runs WHERE request_id=?", (request_id,))
-    if previous:
-        return {"run_id": previous["id"]}
-    account = store.account(account_id)
-    require(account["tracking_state"] == "active", "ACCOUNT_STOPPED", "停止的账号不能新建历史任务")
-    unfinished = store.one(
-        f"SELECT id FROM collection_runs WHERE account_id=? AND kind='history' AND state IN {OPEN_RUNS}",
-        (account_id,),
-    )
-    require(
-        not unfinished or payload.get("mode") in ("append", "replace"),
-        "HISTORY_SCOPE_EXISTS",
-        "已有未结束历史任务，请明确追加或替换",
-    )
-    scope = payload.get("scope")
-    require(scope in ("time", "count", "all"), "INVALID_RANGE", "历史范围应为 time/count/all")
-    end = now()
-    start, count = None, None
-    if scope == "time":
-        start, end = time_range(end, payload.get("amount"), payload.get("unit"), timezone)
-    if scope == "count":
-        count = payload.get("count")
-        require(type(count) is int and count > 0, "INVALID_RANGE", "作品条数必须为正整数")
-    with store.tx():
-        if unfinished and payload.get("mode") == "replace":
-            # Replacing a user scope only withdraws this run; shared/in-flight work remains registered.
-            store.execute(
-                "UPDATE collection_runs SET state='canceled',finished_at=? WHERE id=?",
-                (now(), unfinished["id"]),
-            )
-        run = store.create_run(
-            account, "history", request_id, scope, start=start, end=end, count=count, confirmed=False
+def install(instance, *, source=None, descriptor=None, bot_id=None):
+    """A development source is explicit; the normal installer supplies a verified release."""
+    result = instance.initialize(bot_id=bot_id)
+    entry_missing = not instance.path("run.py").exists()
+    if bot_id is not None:
+        require(instance.load()["host"]["bot_id"] == bot_id, "INSTANCE_MISMATCH")
+    if source is not None:
+        source = safe_path(source)
+        raw = package_bytes(source)
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=source, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        manifest = dict(
+            authority=AUTHORITY,
+            product="social-lurker-lightweight",
+            version=__version__,
+            channel="stable",
+            source_commit=commit,
+            protocol=1,
+            schema_version=1,
+            files={n: digest(v) for n, v in raw.items()},
         )
-    return {"run_id": run["id"], "phase": "metadata_only", "fees": "unknown", "asr_started": False}
+        destination = instance.path("app/" + __version__)
+        if destination.exists():
+            verify_directory(destination, manifest)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            stage = Path(tempfile.mkdtemp(prefix=".package-", dir=destination.parent))
+            try:
+                for name, data in raw.items():
+                    target = safe_path(stage / name)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    atomic_bytes(target, data, 0o400)
+                atomic_json(stage / "manifest.json", manifest)
+                verify_directory(stage, manifest)
+                stage.rename(destination)
+                from .util import fsync_dir
 
-
-def collection_plan(store, run_id):
-    run = store.run(run_id)
+                fsync_dir(destination.parent)
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
+    else:
+        require(descriptor is not None, "RELEASE_REQUIRED")
+        require(descriptor["manifest"]["version"] == __version__, "INSTALL_VERSION_MISMATCH")
+        destination = prepare(instance, descriptor)
+    entry = instance.path("run.py")
+    if entry.exists():
+        require(entry.read_bytes() == (destination / "run.py").read_bytes(), "LAUNCHER_INCOMPATIBLE")
+    else:
+        atomic_bytes(entry, (destination / "run.py").read_bytes(), 0o500)
+    instance.path("logs").mkdir(exist_ok=True, mode=0o700)
+    instance.path("backups").mkdir(exist_ok=True, mode=0o700)
     return {
-        "run_id": run_id,
-        "scope": run["scope_type"],
-        "range_start": run["range_start"],
-        "range_end": run["range_end"],
-        "requested_count": run["requested_count"],
-        "count": run["reported_total"],
-        "total_basis": run["total_basis"],
-        "unknown_publication_count": store.one(
-            "SELECT count(*) n FROM works w JOIN collection_items i ON i.work_id=w.id WHERE i.run_id=? AND w.published_at IS NULL",
-            (run_id,),
-        )["n"],
-        "enumeration_complete": bool(run["enumeration_complete"]),
-        "confirmed": bool(run["plan_confirmed"]),
-        "estimated_asr_duration_seconds": None,
-        "estimated_cost": None,
-        "state": run["state"],
-        "error_code": run["last_error_code"],
-        "counts": store.counts(run_id),
+        **result,
+        "version": __version__,
+        "entry": str(entry),
+        "development_preview": source is not None,
+        "star_event": "install_completed" if entry_missing else None,
+        "setup": check(instance),
     }
 
 
-def confirm_collection(store, run_id, payload):
-    with store.tx():
-        run = store.run(run_id)
-        account = store.account(run["account_id"])
-        require(
-            account["tracking_state"] == "active" and account["watch_epoch"] == run["watch_epoch"],
-            "ACCOUNT_STOPPED",
-            "当前账号或盯梢周期已变化",
-        )
-        require(
-            run["state"] in OPEN_RUNS and run["enumeration_complete"],
-            "ENUMERATION_UNCERTAIN",
-            "元信息范围尚未清点完",
-        )
-        require(
-            payload.get("acknowledged_count") == run["reported_total"]
-            and payload.get("accept_service_costs") is True,
-            "HISTORY_CONFIRMATION_REQUIRED",
-            "需展示并确认本次实际数量及服务计费口径",
-        )
-        store.execute("UPDATE collection_runs SET plan_confirmed=1,state='running' WHERE id=?", (run_id,))
-    store.finish_runs()
-    return {"run_id": run_id, "confirmed": True}
+def check(instance):
+    status = instance_status(instance)
+    if status.get("maintenance"):
+        return status
+    settings = instance.load()
+    missing = []
+    try:
+        instance.credentials()
+    except LurkerError as error:
+        missing.append(error.code)
+    host = settings["host"]
+    e = (host["evidence_ref"] or {}).get("host", {})
+    for key in ("durable_directory", "instance_isolated", "native_schedule_verified"):
+        if not e.get(key):
+            missing.append(key.upper() + "_UNVERIFIED")
+    if not host["delivery_verified_at"]:
+        missing.append("HOST_DELIVERY_UNVERIFIED")
+    if not host["quiet_execution_verified_at"]:
+        missing.append("HOST_QUIET_EXECUTION_UNVERIFIED")
+    if not host["bot_id"]:
+        missing.append("HOST_BOT_ID_REQUIRED")
+    if not host["routine_id"]:
+        missing.append("HOST_ROUTINE_REQUIRED")
+    if not e.get("max_message_length"):
+        missing.append("HOST_LENGTH_UNVERIFIED")
+    for watch in status["watches"]:
+        if (
+            watch["status"] == "active"
+            and TikHub(None).capability(settings, watch["platform"], watch["source_variant"]) == "unverified"
+        ):
+            missing.append("SOURCE_UNVERIFIED:" + watch["platform"] + ":" + watch["source_variant"])
+    return {
+        "instance_id": settings["instance_id"],
+        "version": settings["app_version"],
+        "mode": "automatic_ready" if not missing else "foreground_only",
+        "missing": missing,
+        "source_capabilities": {
+            k: TikHub(None).capability(settings, *k.split(":"))
+            for k in ("douyin:normal", "douyin:lite", "wechat_channels:default")
+        },
+        "routine": routine_plan(instance),
+    }
 
 
-def retry(store, payload, request_id):
-    if payload.get("run_id"):
-        original = store.run(payload["run_id"])
-        previous = store.one("SELECT id FROM collection_runs WHERE request_id=?", (request_id,))
-        if previous:
-            return {"run_id": previous["id"]}
-        if original["state"] in ("completed", "completed_with_errors", "failed"):
-            ids = payload.get("work_ids")
-            require(
-                isinstance(ids, list) and ids and all(type(x) is int for x in ids),
-                "INVALID_REQUEST",
-                "请指定重试作品 ID",
-            )
-            for wid in ids:
-                item = store.one(
-                    "SELECT * FROM collection_items WHERE run_id=? AND work_id=?", (original["id"], wid)
+def routine_snapshot(db, settings):
+    return {
+        "instance_id": settings["instance_id"],
+        "routine_id": settings["host"]["routine_id"],
+        "active": db.execute("SELECT count(*) FROM watches WHERE status='active'").fetchone()[0] > 0,
+        "timezone": settings["timezone"],
+        "monitor": settings["monitor"],
+        "watch_generations": [
+            (r["id"], r["generation"]) for r in db.execute("SELECT id,generation FROM watches ORDER BY id")
+        ],
+    }
+
+
+def routine_plan(instance):
+    with instance.transaction("read") as (db, settings):
+        snapshot = routine_snapshot(db, settings)
+    return {
+        "routine_id": snapshot["routine_id"],
+        "active": snapshot["active"],
+        "timezone": settings["timezone"],
+        "interval_seconds": settings["monitor"]["interval_seconds"],
+        "anchor": settings["monitor"]["schedule_anchor"],
+        "quiet_hours": settings["monitor"]["quiet_hours"],
+        "binding_hash": digest(canonical(snapshot)),
+        "notifications_per_activation": settings["limits"]["notifications_per_activation"],
+        "entry": str(instance.path("run.py")),
+        "instance": str(instance.root),
+    }
+
+
+def bind(instance, data):
+    require(
+        isinstance(data, dict) and set(data) <= {"bot_id", "routine_id", "host", "sources", "evidence"},
+        "EVIDENCE_INVALID",
+    )
+    require(isinstance(data.get("evidence"), str) and 0 < len(data["evidence"]) <= 2048, "EVIDENCE_REQUIRED")
+    now = int(instance.clock())
+    # Evidence references point to real host results; never synthesize a verification timestamp from an assertion alone.
+    with instance.transaction() as (db, settings):
+        host = settings["host"]
+        e = host["evidence_ref"] or {"schema": 1, "host": {}, "sources": {}}
+        for key in ("bot_id", "routine_id"):
+            if key in data:
+                require(isinstance(data[key], str) and 0 < len(data[key]) <= 512, "HOST_BINDING_INVALID")
+                if key == "bot_id" and host[key]:
+                    require(host[key] == data[key], "INSTANCE_MISMATCH")
+                host[key] = data[key]
+        if "host" in data:
+            h = data["host"]
+            require(isinstance(h, dict), "EVIDENCE_INVALID")
+            allowed = {
+                "durable_directory",
+                "instance_isolated",
+                "native_schedule_verified",
+                "quiet_execution_verified",
+                "images_verified",
+                "max_message_length",
+                "length_unit",
+                "delivery_update_id",
+                "routine_plan_id",
+                "routine_active",
+                "routine_binding_hash",
+            }
+            require(set(h) <= allowed, "EVIDENCE_INVALID")
+            for key in (
+                "durable_directory",
+                "instance_isolated",
+                "native_schedule_verified",
+                "quiet_execution_verified",
+                "images_verified",
+                "routine_active",
+            ):
+                if key in h:
+                    require(type(h[key]) is bool, "EVIDENCE_INVALID")
+            if "max_message_length" in h:
+                require(
+                    type(h["max_message_length"]) is int
+                    and h["max_message_length"] > 0
+                    and h.get("length_unit") in {"unicode", "utf8", "utf16"},
+                    "EVIDENCE_INVALID",
+                )
+            if "delivery_update_id" in h:
+                row = db.execute(
+                    "SELECT state,reason,provider_message_id,sent_at FROM updates WHERE id=?",
+                    (h["delivery_update_id"],),
+                ).fetchone()
+                require(
+                    row and row["state"] == "sent" and row["reason"] == "test" and row["provider_message_id"],
+                    "DELIVERY_PROOF_REQUIRED",
+                )
+                host["delivery_verified_at"] = row["sent_at"]
+            if h.get("quiet_execution_verified"):
+                host["quiet_execution_verified_at"] = now
+            if "routine_active" in h or "routine_binding_hash" in h or h.get("native_schedule_verified"):
+                snapshot = routine_snapshot(db, settings)
+                require(
+                    h.get("routine_binding_hash") == digest(canonical(snapshot))
+                    and h.get("routine_active") is snapshot["active"],
+                    "ROUTINE_PROOF_STALE",
+                )
+            e.setdefault("host", {}).update(h, evidence=data["evidence"], verified_at=now)
+        if "sources" in data:
+            require(isinstance(data["sources"], dict), "EVIDENCE_INVALID")
+            for key, item in data["sources"].items():
+                require(
+                    key in {"douyin:normal", "douyin:lite", "wechat_channels:default"}
+                    and isinstance(item, dict),
+                    "EVIDENCE_INVALID",
                 )
                 require(
-                    item and item["result"] in ("failed", "unavailable", "skipped"),
-                    "INVALID_REQUEST",
-                    "只能选择原批次失败范围",
+                    set(item) == {"adapter_version", "level", "evidence"}
+                    and item["adapter_version"] == ADAPTER_VERSION,
+                    "EVIDENCE_INVALID",
                 )
-            with store.tx():
-                account = store.account(original["account_id"])
-                require(account["tracking_state"] == "active", "ACCOUNT_STOPPED", "停止后不能新建重试批次")
-                run = store.create_run(
-                    account,
-                    "history",
-                    request_id,
-                    "selected",
-                    end=original["range_end"],
-                    parent=original["id"],
+                require(
+                    item["level"]
+                    in {"unverified", "recent_pages_verified", "enumeration_verified", "range_verified"}
+                    and isinstance(item["evidence"], str)
+                    and item["evidence"],
+                    "EVIDENCE_INVALID",
                 )
-                store.execute(
-                    "UPDATE collection_runs SET state='running',started_at=?,enumeration_complete=1,reported_total=?,total_basis='selected_ids' WHERE id=?",
-                    (now(), len(ids), run["id"]),
-                )
-                for wid in ids:
-                    work = store.work(wid)
-                    if work["processing_state"] in ("ready", "no_speech"):
-                        result = "reused" if work["processing_state"] == "ready" else "no_speech"
-                    else:
-                        reset_work(store, work, payload)
-                        result = "pending"
-                    store.execute(
-                        "INSERT INTO collection_items(run_id,work_id,result,created_at) VALUES(?,?,?,?)",
-                        (run["id"], wid, result, now()),
-                    )
-            store.finish_runs()
-            return {"run_id": run["id"], "parent_run_id": original["id"]}
-        with store.tx():
-            require(original["state"] in ("blocked", "retry_wait"), "INVALID_REQUEST", "该任务无需重试")
-            store.execute(
-                "UPDATE collection_runs SET state='running',attempt_count=0,last_error_code=NULL,next_attempt_at=NULL,cursor=CASE WHEN enumeration_complete=0 THEN NULL ELSE cursor END WHERE id=?",
-                (original["id"],),
-            )
-            for item in store.all(
-                "SELECT w.* FROM works w JOIN collection_items i ON w.id=i.work_id WHERE i.run_id=? AND i.result='blocked'",
-                (original["id"],),
-            ):
-                reset_work(store, item, payload)
-        return {"run_id": original["id"]}
-    with store.tx():
-        work = store.work(payload["work_id"])
-        # Closed historical summaries are immutable; retry through a selected child run instead.
-        require(
-            store.one(
-                f"SELECT i.run_id FROM collection_items i JOIN collection_runs r ON r.id=i.run_id WHERE i.work_id=? AND r.state IN {OPEN_RUNS}",
-                (work["id"],),
-            ),
-            "RETRY_RUN_REQUIRED",
-            "原批次已结束，请通过 run_id 创建所选作品的重试批次",
-        )
-        reset_work(store, work, payload)
-    return {"work_id": work["id"]}
+                e.setdefault("sources", {})[key] = item
+        host["evidence_ref"] = e
+        validate(settings)
+        atomic_json(instance.path("settings.json"), settings)
+    return check(instance)
 
 
-def reset_work(store, work, payload):
+def configure(instance, patch):
     require(
-        work["processing_state"] in ("blocked", "failed", "unavailable", "submit_unknown", "retry_wait"),
-        "INVALID_REQUEST",
-        "不能重置正在执行或已成功的作品",
+        isinstance(patch, dict) and set(patch) <= {"timezone", "monitor", "rate_limit", "limits"},
+        "CONFIG_PATCH_INVALID",
     )
-    if work["processing_state"] == "submit_unknown":
-        if payload.get("external_job_id"):
-            require(isinstance(payload["external_job_id"], str), "INVALID_REQUEST", "远端任务标识无效")
-            store.execute(
-                "UPDATE works SET external_job_id=?,asr_phase='submitted',asr_reviewed_at=?,processing_state='transcribing',execution_cycle=execution_cycle+1 WHERE id=?",
-                (payload["external_job_id"], now(), work["id"]),
+    with instance.transaction() as (db, settings):
+        old = copy.deepcopy(settings)
+        for key, value in patch.items():
+            if isinstance(settings[key], dict):
+                require(isinstance(value, dict), "CONFIG_PATCH_INVALID")
+                settings[key].update(value)
+            else:
+                settings[key] = value
+        validate(settings)
+        now = int(instance.clock())
+        if old["timezone"] != settings["timezone"] or old["monitor"] != settings["monitor"]:
+            s, _ = context(now, settings)
+            db.execute(
+                "UPDATE runtime SET recovery_applied_slot=?,last_automatic_slot=NULL,updated_at=?", (s, now)
             )
+            db.execute(
+                "UPDATE watches SET next_check_at=?,scan_state_json=NULL,updated_at=? WHERE status='active'",
+                (next_slot(now, settings), now),
+            )
+            # Changing a native schedule invalidates its old verification evidence.
+            evidence = settings["host"]["evidence_ref"]
+            if evidence:
+                evidence.setdefault("host", {})["native_schedule_verified"] = False
+        atomic_json(instance.path("settings.json"), settings)
+    return {"configured": True, "routine": routine_plan(instance)}
+
+
+def instance_status(instance):
+    with lock(instance.root, "state.lock"):
+        plan = instance.plan()
+        if plan and not plan["business_writes_open"]:
+            return {
+                "maintenance": {
+                    k: plan.get(k) for k in ("plan_id", "stage", "business_writes_open", "result")
+                },
+                "pending_receipts": sum(i["state"] == "pending" for i in plan["pending_receipts"]),
+            }
+    with instance.transaction("read") as (db, settings):
+        rt = dict(db.execute("SELECT * FROM runtime").fetchone())
+        notices = array(rt.pop("incidents_json"))
+        rt["api_holds"] = array(rt.pop("api_holds_json"))
+        rows = []
+        for raw in db.execute("SELECT * FROM watches ORDER BY platform,author_id"):
+            row = dict(raw)
+            scan = row.pop("scan_state_json")
+            row["scan_pending"] = scan is not None
+            row["coverage_gaps"] = array(row.pop("coverage_gaps_json"))
+            rows.append(row)
+        return {
+            "version": settings["app_version"],
+            "runtime": rt,
+            "watches": rows,
+            "updates": {r[0]: r[1] for r in db.execute("SELECT state,count(*) FROM updates GROUP BY state")},
+            "incidents": [{"id": n["id"], "code": n["code"], "state": n["state"]} for n in notices],
+            "incident_capacity_reached": len(notices) >= 32,
+            "maintenance": None if not plan else {"stage": plan["stage"], "plan_id": plan["plan_id"]},
+        }
+
+
+def export(instance, kind, path, *, watch_id=None, since=None, until=None):
+    destination = safe_path(path)
+    require(Path(path).is_absolute(), "EXPORT_PATH_INVALID")
+    require(not destination.is_relative_to(instance.root), "EXPORT_PATH_INVALID", "导出写到实例目录之外")
+    with instance.transaction("read") as (db, _):
+        if kind == "watches":
+            rows = [
+                dict(r)
+                for r in db.execute(
+                    "SELECT platform,author_id,author_name,status,watch_since FROM watches ORDER BY platform,author_id"
+                )
+            ]
         else:
             require(
-                payload.get("accept_duplicate_charge_risk") is True,
-                "ASR_RECONCILIATION_REQUIRED",
-                "提交不明需绑定远端任务，或明确接受重复收费风险",
+                kind == "updates" and (watch_id is not None or since is not None or until is not None),
+                "EXPLICIT_RANGE_REQUIRED",
             )
-            store.execute(
-                "UPDATE works SET external_job_id=NULL,asr_phase=NULL,processing_state='pending',execution_cycle=execution_cycle+1 WHERE id=?",
-                (work["id"],),
-            )
-    else:
-        state = (
-            "pending_proofread"
-            if work["raw_transcript_text"]
-            else ("transcribing" if work["external_job_id"] else "pending")
-        )
-        # A known remote job is always queried again, never silently resubmitted.
-        store.execute(
-            "UPDATE works SET processing_state=?,execution_cycle=execution_cycle+1 WHERE id=?",
-            (state, work["id"]),
-        )
-        if work["last_error_code"] == "ASR_STALE":
-            store.execute("UPDATE works SET asr_reviewed_at=? WHERE id=?", (now(), work["id"]))
-    store.execute(
-        "UPDATE works SET stage_attempts='{}',attempt_count=0,next_attempt_at=NULL,owner_token=NULL,lease_until=NULL,last_error_code=NULL,last_error_message=NULL WHERE id=?",
-        (work["id"],),
-    )
-    store.execute(
-        f"UPDATE collection_items SET result='pending',error_code=NULL,finished_at=NULL WHERE work_id=? AND result='blocked' AND run_id IN (SELECT id FROM collection_runs WHERE state IN {OPEN_RUNS})",
-        (work["id"],),
-    )
-    if work["last_error_code"]:
-        store.execute(
-            "UPDATE notifications SET resolved_at=?,state=CASE WHEN state IN ('pending','retry_wait','blocked') THEN 'canceled' ELSE state END WHERE incident_code=? AND account_id=? AND resolved_at IS NULL",
-            (now(), work["last_error_code"], work["account_id"]),
-        )
+            clauses = []
+            params = []
+            for column, op, value in (
+                ("watch_id", "=", watch_id),
+                ("published_at", ">=", since),
+                ("published_at", "<=", until),
+            ):
+                if value is not None:
+                    clauses.append(column + op + "?")
+                    params.append(value)
+            rows = [
+                dict(r)
+                for r in db.execute(
+                    "SELECT platform,work_id,author_name,published_at,title,source_url,state FROM updates WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY published_at,work_id",
+                    params,
+                )
+            ]
+    raw = (canonical({"protocol": 1, "kind": kind, "items": rows}) + "\n").encode()
+    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(raw)
+        f.flush()
+        os.fsync(f.fileno())
+    return {"path": str(destination), "count": len(rows)}
 
 
-def skip(store, run_id, work_id):
-    with store.tx():
-        run = store.run(run_id)
-        require(run["state"] in ("running", "blocked", "retry_wait"), "INVALID_REQUEST", "已结束批次不能改写")
-        item = store.one("SELECT * FROM collection_items WHERE run_id=? AND work_id=?", (run_id, work_id))
-        if item and item["result"] == "skipped":
-            return {"run_id": run_id, "work_id": work_id, "skipped": True}
-        require(item and item["result"] in ("blocked", "pending"), "INVALID_REQUEST", "该作品无待处置结果")
-        work = store.work(work_id)
+def uninstall(
+    instance,
+    *,
+    confirmed=False,
+    host_detached=False,
+    purge=False,
+    backup_path=None,
+    discard_backup=False,
+    abandon_unresolved=False,
+):
+    require(
+        confirmed is True and host_detached is True,
+        "UNINSTALL_AUTHORIZATION_REQUIRED",
+        "须明确当前实例并核验宿主调度与技能绑定已停用",
+    )
+    require(not abandon_unresolved or purge, "UNRESOLVED_ABANDONMENT_REQUIRES_PURGE")
+
+    def inspect(db):
         require(
-            work["processing_state"] in ("blocked", "submit_unknown", "pending", "failed"),
-            "WORK_RUNNING",
-            "正在执行的作品不能直接跳过",
+            not db.execute("SELECT 1 FROM watches WHERE status='active'").fetchone(), "ACTIVE_WATCHES_REMAIN"
         )
-        store.execute(
-            "UPDATE collection_items SET result='skipped',finished_at=?,requires_notification=0 WHERE run_id=? AND work_id=?",
-            (now(), run_id, work_id),
+        count = db.execute("SELECT count(*) FROM updates WHERE state IN ('sending','unknown')").fetchone()[0]
+        count += sum(
+            n["state"] in {"pending", "sending", "unknown"}
+            for n in array(db.execute("SELECT incidents_json FROM runtime").fetchone()[0])
         )
-    store.finish_runs()
-    return {"run_id": run_id, "work_id": work_id, "skipped": True}
+        require(not count or abandon_unresolved is True, "UNRESOLVED_RECEIPTS")
+        return count
+
+    def fingerprints():
+        return [
+            (
+                instance.path(n).stat().st_ino,
+                instance.path(n).stat().st_size,
+                instance.path(n).stat().st_mtime_ns,
+            )
+            for n in ("state.sqlite", "settings.json", ".env")
+        ]
+
+    stage = None
+    tomb = None
+    destination = None
+    try:
+        with lock(instance.root, "poll.lock", timeout=0), lock(instance.root, "request.lock", timeout=0):
+            with instance.transaction() as (db, _):
+                require(instance.plan() is None, "MAINTENANCE_ACTIVE")
+                unresolved = inspect(db)
+            with lock(instance.root, "state.lock"):
+                before = fingerprints()
+            if purge:
+                require(backup_path is not None or discard_backup is True, "BACKUP_DECISION_REQUIRED")
+                if backup_path:
+                    destination = safe_path(backup_path)
+                    require(
+                        Path(backup_path).is_absolute()
+                        and not destination.exists()
+                        and not destination.is_relative_to(instance.root),
+                        "BACKUP_PATH_INVALID",
+                    )
+                    require(not any(p.is_symlink() for p in instance.root.rglob("*")), "SYMLINK_REJECTED")
+                    stage = Path(tempfile.mkdtemp(prefix=".lurker-backup-", dir=destination.parent))
+                    shutil.copytree(
+                        instance.root, stage, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.lock")
+                    )
+                    from .lifecycle import Lifecycle
+
+                    Lifecycle(instance).inspect_db(stage / "state.sqlite", instance.load()["instance_id"])
+            # Short final fence: a pause, receipt, configuration or key update during copying invalidates the snapshot.
+            with lock(instance.root, "state.lock"):
+                settings = instance.gate()
+                with instance.connection(settings, "read") as db:
+                    inspect(db)
+                require(
+                    fingerprints() == before, "INSTANCE_CHANGED", "实例在备份期间发生变化，请重新核对后执行"
+                )
+                if stage:
+                    stage.rename(destination)
+                    stage = None
+                if purge:
+                    from .util import ident
+
+                    tomb = safe_path(instance.root.parent / (".removed-" + ident()))
+                    instance.root.rename(tomb)
+                else:
+                    instance.path("run.py").unlink(missing_ok=True)
+                    app = instance.path("app")
+                    if app.exists():
+                        from .util import ident
+
+                        tomb = safe_path(instance.root.parent / (".removed-code-" + ident()))
+                        app.rename(tomb)
+        if tomb:
+            shutil.rmtree(tomb)
+        return (
+            {
+                "purged": True,
+                "instance": str(instance.root),
+                "backup": backup_path,
+                "unresolved_discarded": unresolved,
+            }
+            if purge
+            else {"uninstalled": True, "retained_data": str(instance.root)}
+        )
+    finally:
+        if stage and stage.exists():
+            shutil.rmtree(stage)

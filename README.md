@@ -1,85 +1,115 @@
 # 盯梢者 · social-lurker
 
-运行在 Grok Bot 电脑上的社交作品全文资料库。首版支持微信视频号与抖音，TikHub 获取、ffmpeg 压缩、fal.ai Whisper 转写、当前 Grok Bot 自身 LLM 校对。
+替你关注作者，发现新作品就主动推送。每条作品一条消息，包含**作者、发布时间、标题、原作品链接**，可附封面图。想看内容，点链接回原平台。
 
-**当前是首版开发实现，尚未通过 Grok Bot 安装、原生校对、通知及强静默验收。** 没有创建 routine、部署、发布正式 Release 或替用户点 Star。
+首批面向 **Grok Bot、抖音和微信视频号**，使用 TikHub 获取动态数据。只关注新发布，不下载媒体、不转写全文、不生成摘要，也不搭建阅读网站。
 
-## 安装到 Grok Bot
+## 当前进度
 
-在你希望使用的 Bot 中发送一句话：
+**轻量 R1 / 0.3.0 开发预览：本地实现完成，等待 Grok Bot 实际联调。**
+
+| 项目 | 状态 |
+| --- | --- |
+| 元信息检查、数据库、去重和通知交付协议 | 已实现，本地测试通过 |
+| 独立实例安装、重复安装、升级中断恢复 | 本地验证通过 |
+| 自动化回归 | 2026-09-13 验证记录：72 项测试通过 |
+| TikHub 两平台真实数据与分页覆盖 | 新版待实测 |
+| Grok Bot 原生调度、静默执行、图文和真实回执 | 待实测 |
+| 不可变稳定软件 Release | 尚未发布 |
+
+**上传代码后可以在 Grok Bot 安装开发预览并开始联调；发布本身不会让未验证的功能自动变为可用。** 当前平台适配默认未验证，后台运行须完成首次配置与能力核验。详细证据见 [验证记录](docs/validation.md)。
+
+## 在 Grok Bot 中开始试用
+
+先确保本版代码已经上传到仓库，然后在你希望使用的 Bot 中发送：
+
+> 请安装并配置盯梢者当前轻量开发预览：https://github.com/shishengkai/social-lurker
+
+Bot 按 [维护 skill](skills/social-lurker-maintainer/SKILL.md) 完成安装和配置。你只需提供需要关注的作者，以及配置当前实例的 TikHub API key；不必复制长脚本或手工填写一套数据库配置。Key 使用受保护输入或直接写入该实例 `.env`，不发到普通聊天中。实际检查会调用 TikHub，费用由服务商计收。
+
+首次试用按以下顺序进行：
+
+1. **安装并配置。** Bot 确认自己的持久工作目录和身份，准备 Python 3.12+，创建独立实例。
+2. **添加作者并验证数据。** 提供抖音或视频号作者主页、作品分享链接，核对解析出的作者、作品时间和原链接。首次关注从现在开始，不自动推送历史作品。
+3. **明确试发一条。** 对 Bot 说“试发这位作者最近一条作品”。检查消息排版、链接跳转和实际送达；图文可用时附封面，不支持时使用文字。
+4. **验证后台运行。** Bot 核验原生定时任务、无更新时静默以及真实发送回执，再启用日间自动检查。
+
+能力不足或数据接口返回异常时，Bot 应说明具体缺项，保留可用的前台操作。首次联调可能需要修正平台适配或宿主调用方式；不能把本地测试通过当作这些环节已经可用。
+
+正式稳定版发布后，安装指令可简化为：
 
 > 请安装并配置盯梢者：https://github.com/shishengkai/social-lurker
 
-Bot 会读取 [安装配置 skill](skills/social-lurker-setup/SKILL.md)，准备环境、绑定当前 Bot、引导填写 TikHub 和 fal.ai Key，并验证通知和定时任务。用户只需提供实际缺失的信息；默认每 30 分钟检查，由当前 Bot 自己的 LLM 校对，不需要额外 LLM Key。
+稳定安装要求官方 GitHub Release 具备固定版本、完整安装资产和不可变状态。**仅 push 源码不会生成稳定安装包。** 首次配置和能力核验仍需完成。
 
-**给执行安装的 Bot：当前安装通道为 `preview`，版本为 `0.2.0-dev`。** 使用固定到精确 commit 的干净源码快照，按 setup skill 调用根目录 `install.py --channel preview`。当前没有正式 Release；这是明确的试用通道，不能称 stable。正式发布后入口改用 stable。完整命令和验证规则由 skill 负责，不要求用户复制工程说明。
+## 日常使用
 
-同一 Bot 再次安装会继续原配置，新增 Bot 复用程序并建立独立数据库和 .env。重复安装不自动升级已有实例。原生安装、通知和静默能力仍须在 Grok Bot 中取得真实证据。
+用自然语言告诉 Bot 即可，例如：
 
-- 每个 Bot 独立 SQLite、settings.json 与 .env；跨 Bot 不合并资料或去重。
-- 原稿和完整校对稿长期存 SQLite，每条新作品一条完整通知；历史批次只有结束汇总。
-- 不增加 Web server、阅读文件或额外 LLM API。超长单条消息阻塞并保留全文，不自动摘要/截断/拆分。
-- 停止后在途工作完成保存，待发通知取消；恢复从现在开始。
-- 已知 ASR 任务继续查询，提交/发送结果不明时保留核对状态，不盲目重复。
+- “盯一下这个作者：〈链接〉”
+- “我现在关注了哪些作者？”
+- “试发这位作者最近一条作品。”
+- “暂停盯梢这位作者。”
+- “恢复盯梢这位作者。”
+- “检查盯梢者有没有新版本。”
 
-## 本地开发
+默认规则：
 
-需要 Python 3.12+、[uv](https://docs.astral.sh/uv/)、ffmpeg/ffprobe；视频号解密另需 Node 22+。系统依赖不由测试自动安装。
+- **日间检查：** 北京时间 07、09、11、13、15、17、19、21、23 点，每天 9 轮；00–07 点不启动例行检查。没有新作品时不推送“检查完成”等消息。
+- **逐作品通知：** 作者、发布时间、标题、原作品链接放在一条消息中；封面仅使用列表顺带返回的合格地址，不为封面额外调用接口。单次激活默认最多交付 20 条，余项等后续允许轮次。
+- **节省请求：** 默认查首页；本页全部是符合观察范围的新增作品，且分页信息有效时才继续下一页。首次有效检查固定一页。不设每日请求次数硬上限，统一限速和退避。
+- **暂停与恢复：** 暂停取消待发通知，恢复从恢复时刻开始；不补暂停期间的作品。正常夜间停查不算暂停，夜间新作可在早晨发现。
+- **停机与去重：** 不追补停机期间尚未发现的历史，已有待办保留；同一 Bot 内按作品 ID 去重。发送结果不明时等待核对，不自动重发。
+- **独立数据：** 每个 Bot 各用自己的数据库和配置；两个 Bot 关注同一作者时各自通知，互不合并。
 
-```sh
-uv sync --python 3.12
-uv run pytest -q
-uv run ruff check src tests tools
-uv run python tools/dev.py --help
-```
+条件翻页是有限覆盖策略；置顶、乱序、延迟进入列表和平台可见性可能造成漏报，不承诺收齐全部作品。旧全文版需要另建轻量实例、重新配置和关注，不导入旧库，也不自动清理旧资料。
 
-使用 `tools/dev.py` 从源码启动，避免 macOS iCloud 自动设置隐藏属性使 editable `.pth` 被 Python 忽略。部署包采用独立 app 目录，不依赖 editable 安装。依赖版本与摘要固定在 uv.lock 和 requirements-runtime.txt。
+## 安装与维护入口
 
-开发安装（只用于验证，根目录可自行选择；不会自动绑定真实 Bot 或创建 routine）：
-
-```sh
-uv run python tools/install_dev.py --root /tmp/social-lurker-demo --instance <固定的实例UUID>
-```
-
-命令返回 instance_id 与 launcher。按 [JSON 协议](skills/social-lurker/references/protocol.md) 使用结构化 stdin 调用，先配置当前实例 `.env` 再 doctor。`.env.example` 无真实值。配置不从工作目录或宿主环境推断，不跨 Bot 改写 os.environ。
-
-## Grok Bot
-
-用户入口由三个 skill 配合完成：
+项目使用两个 skill：
 
 | Skill | 职责 |
 | --- | --- |
-| [social-lurker](skills/social-lurker/SKILL.md) | 日常盯梢、全文处理与通知，以及请求路由 |
-| [social-lurker-setup](skills/social-lurker-setup/SKILL.md) | 安装、绑定、配置和恢复未完成的设置 |
-| [social-lurker-upgrader](skills/social-lurker-upgrader/SKILL.md) | 稳定版本检查、升级与恢复 |
+| [social-lurker](skills/social-lurker/SKILL.md) | 管理关注、检查动态、逐作品交付与回执核对 |
+| [social-lurker-maintainer](skills/social-lurker-maintainer/SKILL.md) | 安装配置、宿主验证、接口修复、升级恢复和卸载 |
 
-Star 为安装/升级成功后的共用可选步骤，用户独立授权；不增加单独 skill。验证步骤见 [目标环境验收](skills/social-lurker/references/acceptance.md)。默认 delivery.verified=false，真实消息能力验证后才能正式领取通知。
+用户主动任务完成后会自动检查稳定新版，有新版时提示；明确要求升级后才应用。成功安装或升级后可邀请 Star，实际 Star 需要独立同意。后台检查不混入升级和 Star 提示。
 
-本地布局：
+给执行安装的 Bot：先读取维护 skill。用户明确试用开发预览时，使用安装器的 `--allow-working-tree`；默认安装只接受固定官方仓库的最高不可变稳定 Release。软件包验证失败时停止，不切换到旧全文版。具体命令、JSON 协议和宿主核验步骤见 [安装说明](docs/installation.md)。
+
+## 本地文件
+
+程序运行时仅需 Python 3.12+，使用标准库。日常状态保存在 SQLite 三表中，settings 和 `.env` 使用文件；不需要独立服务器。
 
 ```text
-/workspace/social-lurker/
-  runtime/launcher.py
-  runtime/releases/<version>/{app,skills,vendor,.venv,manifest.json}
-  runtime/locks/
-  runtime/tools/                 # 自动准备或记录的依赖环境
-  bots/<instance_id>/
-    settings.json
-    .env
-    lurker.sqlite3
-    work/<work_id>/<cycle>-<attempt>/
-    logs/
-    maintenance/
+<当前 Bot 的持久目录>/social-lurker/<instance>/
+  run.py
+  app/<version>/                # 固定版本的程序与两个 skill
+  settings.json                # 本实例配置
+  .env                         # 本实例 TIKHUB_API_KEY
+  state.sqlite                 # 关注、作品元信息、交付与运行状态
+  poll.lock
+  request.lock
+  state.lock
+  maintenance.json             # 仅未完成升级期间存在
+  logs/
+  backups/
 ```
 
-源码职责及恢复边界见 [实现说明](docs/implementation.md)，实测结果见 [验证记录](docs/validation.md)。
+只有确认 `/workspace` 属于当前 Bot 且可持久保存时，才采用 `/workspace/social-lurker/` 默认根目录。卸载默认保留资料，清除实例数据需要明确选择。
 
-安装器的前提、恢复边界及依赖来源见 [安装实现](docs/installation.md)。
+## 开发与发布
 
-## 升级与发布
+```sh
+uv sync --python 3.12 --group dev
+uv run pytest -q
+uv run ruff check install.py src tests tools
+uv run ruff format --check install.py src tests tools
+uv run python tools/smoke_install.py
+```
 
-程序只发现固定仓库的最高不可变稳定 Release，解析标签到 commit 并核验 manifest/资产摘要。升级一次授权、逐实例切版本、维护期间保留资料，其他 Bot 绑定不变。未发布正式版本时 upgrade check 会如实报告。
+开发入口为 `tools/dev.py`，实例入口为安装器生成的 `run.py`；命令显式绑定实例绝对目录，参数使用 `protocol:1` JSON。
 
-[发布流程](docs/releasing.md)区分源代码 commit 和发布清单 commit，避免清单包含自身 SHA 造成循环。构建器不自动 commit、push、tag 或发布。
+当前交付顺序：**上传开发预览 → Grok Bot 实际安装与联调 → 修复并验收 → 发布不可变稳定版本**。构建和发布步骤见 [软件发布流程](docs/releasing.md)。
 
-第三方解密资源固定到 upstream commit，MIT 许可证与摘要在 [vendor/wechat-decrypt](vendor/wechat-decrypt/)。只携带本地 JS/WASM，不携带 GUI、服务端或历史样本。
+[实现说明](docs/implementation.md) · [安装说明](docs/installation.md) · [验证记录](docs/validation.md)

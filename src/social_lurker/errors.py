@@ -1,17 +1,20 @@
-class LurkerError(Exception):
-    """Only curated messages may cross the CLI boundary, never upstream bodies."""
+"""Stable public errors; raw upstream responses and credentials never cross the CLI."""
 
-    def __init__(self, code, message, *, retryable=False, retry_after=None):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.retryable = retryable
-        self.retry_after = retry_after
+
+class LurkerError(Exception):
+    def __init__(
+        self, code, message="操作未完成，请查看状态并按提示处理", *, retryable=False, next_action=None
+    ):
+        super().__init__(code)
+        self.code, self.message = code, message
+        self.retryable, self.next_action = retryable, next_action
 
     def public(self):
-        return {"code": self.code, "message": self.message, "retryable": self.retryable}
+        return dict(
+            code=self.code, message=self.message, retryable=self.retryable, next_action=self.next_action
+        )
 
 
-def require(condition, code, message):
+def require(condition, code, message="输入、实例或状态不符合要求"):
     if not condition:
         raise LurkerError(code, message)

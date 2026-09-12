@@ -1,438 +1,267 @@
+"""Versioned JSON command boundary. Provider payloads and credentials never escape it."""
+
 import argparse
-import contextlib
-import copy
-import json
+import sqlite3
 import sys
-import uuid
 
-from . import __version__
-from .config import Instance, doctor, validate
-from .control import Journal
-from .engine import Engine
+from .config import Instance
+from .delivery import Delivery
 from .errors import LurkerError, require
-from .notifications import Notifications
-from .operations import collection_plan, confirm_collection, prepare_collection, retry, skip
-from .proofread import Proofreader
+from .http import Client
+from .lifecycle import Lifecycle
+from .monitor import Monitor
+from .operations import bind, check, configure, export, instance_status, routine_plan, uninstall
+from .releases import discover
+from .sources import TikHub
 from .store import Store
-from .util import file_lock, now, write_json
+from .util import canonical, parse_json, semver
 
 
-def merge_settings(original, changes):
-    result = copy.deepcopy(original)
-    for key, value in changes.items():
-        if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = merge_settings(result[key], value)
-        else:
-            result[key] = value
-    return result
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise LurkerError("COMMAND_INVALID", "命令参数无效，请查看帮助")
 
 
-def dispatch(instance, store, settings, command, request):
-    payload = request["payload"]
-    action = payload.get("action", "get")
-    journal = Journal(instance)
-    engine = Engine(instance, store, settings) if settings else None
-
-    def mutate(summary, operation, prepare=lambda: {}):
-        return journal.perform(request, command + ":" + action, summary, operation, prepare)
-
-    if command == "init":
-        return {
-            "instance_id": instance.id,
-            "data_directory": str(instance.path),
-            "version": __version__,
-            "next": "config credentials, doctor, then Grok Bot binding/delivery/routine acceptance",
-        }
-    if command == "doctor":
-        result = doctor(instance, settings)
-        result["checks"]["database"] = (
-            store.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-            and not store.execute("PRAGMA foreign_key_check").fetchall()
-        )
-        result["local_ready"] = all(v for k, v in result["checks"].items() if k != "delivery_verified")
-        return result
-    if command == "setup":
-        from .setup import status
-
-        require(action == "status", "INVALID_REQUEST", "setup 支持 action:status")
-        return status(instance, settings, store)
-    if command == "status":
-        return store.summary()
-    if command == "config":
-        if action == "get":
-            return {
-                "settings": settings,
-                "credentials_present": {k: bool(v) for k, v in instance.credentials().items()},
-            }
-        if action == "credentials":
-            values = payload.get("values", {})
-
-            def set_credentials(_):
-                instance.set_credentials(values)
-                return {"updated_fields": sorted(values), "values_stored": "current instance .env"}
-
-            return mutate({"credential_fields": sorted(values)}, set_credentials)
-        require(
-            action == "set" and isinstance(payload.get("settings"), dict),
-            "INVALID_REQUEST",
-            "不支持的配置操作",
-        )
-        updated = merge_settings(settings, payload["settings"])
-        require(
-            updated["instance_id"] == settings["instance_id"]
-            and updated["runtime_version"] == settings["runtime_version"]
-            and updated["platform_bot_id"] == settings["platform_bot_id"],
-            "CONFIG_INVALID",
-            "配置不能改变实例身份或绕过升级绑定版本",
-        )
-        validate(updated, instance.id)
-        if updated["delivery"]["verified"] and not settings["delivery"]["verified"]:
-            require(
-                payload.get("native_delivery_test_passed") is True,
-                "DELIVERY_UNVERIFIED",
-                "须在真实 Grok Bot 完成交付测试后启用",
-            )
-
-        def save(_):
-            write_json(instance.settings_path, updated)
-            return {
-                "updated": True,
-                "routine_sync_required": updated["check_interval_minutes"]
-                != updated["routine"]["verified_interval_minutes"],
-            }
-
-        return mutate({"settings": payload["settings"]}, save)
-    if command == "accounts":
-        if action == "list":
-            return {"accounts": store.all("SELECT * FROM accounts ORDER BY id")}
-        if action == "add":
-            require(
-                payload.get("accept_service_costs") is True,
-                "COST_ACK_REQUIRED",
-                "需告知默认 30 分钟检查及 TikHub/Whisper 可能计费",
-            )
-
-            def add(_):
-                metadata = engine.social.resolve(payload["source"])
-                return store.add_account(metadata, request["request_id"])
-
-            result = mutate({"source": payload.get("source")}, add)
-            # Add is immediate: bounded initial collection proceeds even if history question is unanswered.
-            if result.get("created"):
-                engine.tick(schedule=False)
-            return result
-        require(action in ("stop", "resume", "delete"), "INVALID_REQUEST", "不支持的账号操作")
-        aid = payload["account_id"]
-
-        def control(intent):
-            if not store.one("SELECT id FROM accounts WHERE id=?", (aid,)) and action == "delete":
-                return {"account_id": aid, "state": "deleted"}
-            account = store.control(aid, action, intent["epoch"])
-            return {
-                "account_id": aid,
-                "state": account["tracking_state"],
-                "watch_epoch": account["watch_epoch"],
-            }
-
-        return mutate({"account_id": aid}, control, lambda: {"epoch": store.account(aid)["watch_epoch"]})
-    if command == "collect":
-        if action == "prepare":
-            result = mutate(
-                {k: payload.get(k) for k in ("account_id", "scope", "amount", "unit", "count", "mode")},
-                lambda _: prepare_collection(
-                    store, payload["account_id"], payload, request["request_id"], settings["timezone"]
-                ),
-            )
-            engine.enumerate_run(result["run_id"])
-            return collection_plan(store, result["run_id"])
-        if action == "status":
-            return collection_plan(store, payload["run_id"])
-        require(action == "confirm", "INVALID_REQUEST", "不支持的历史操作")
-        return mutate(
-            {"run_id": payload["run_id"], "count": payload.get("acknowledged_count")},
-            lambda _: confirm_collection(store, payload["run_id"], payload),
-        )
-    if command == "tick":
-        return engine.tick()
-    if command == "retry":
-
-        def prepare_retry():
-            if payload.get("work_id"):
-                return {"cycle": store.work(payload["work_id"])["execution_cycle"]}
-            run = store.run(payload["run_id"])
-            return {"run_state": run["state"]}
-
-        def perform_retry(intent):
-            if (
-                payload.get("work_id")
-                and store.work(payload["work_id"])["execution_cycle"] != intent["cycle"]
-            ):
-                return {"work_id": payload["work_id"], "recovered": True}
-            if (
-                payload.get("run_id")
-                and intent.get("run_state") in ("blocked", "retry_wait")
-                and store.run(payload["run_id"])["state"] != intent["run_state"]
-            ):
-                return {"run_id": payload["run_id"], "recovered": True}
-            return retry(store, payload, request["request_id"])
-
-        return mutate(
-            {
-                k: payload.get(k)
-                for k in ("work_id", "run_id", "work_ids", "external_job_id", "accept_duplicate_charge_risk")
-            },
-            perform_retry,
-            prepare_retry,
-        )
-    if command == "skip":
-        return mutate(
-            {"run_id": payload["run_id"], "work_id": payload["work_id"]},
-            lambda _: skip(store, payload["run_id"], payload["work_id"]),
-        )
-    if command == "proofread":
-        proof = Proofreader(store, settings)
-        if action == "next":
-            return {"segment": proof.next(payload.get("work_id"))}
-        if action == "submit":
-            return proof.submit(payload)
-        if action == "status":
-            return {
-                "works": store.all(
-                    "SELECT id,processing_state,raw_text_hash,last_error_code FROM works WHERE processing_state IN ('pending_proofread','proofreading')"
-                )
-            }
-    if command == "notifications":
-        notifications = Notifications(store, settings)
-        if action == "list":
-            return {"notifications": notifications.list()}
-        if action == "claim":
-            return notifications.claim(payload["notification_id"])
-        if action == "render":
-            return notifications.render(payload["notification_id"], payload["dispatch_token"])
-        if action == "ack":
-            return notifications.ack(
-                payload["notification_id"], payload["dispatch_token"], payload.get("evidence")
-            )
-        if action == "resolve":
-            return notifications.resolve(payload["notification_id"], payload["resolution"], payload)
-    if command == "upgrade":
-        from .upgrade import apply_upgrade, discover, is_newer, recover_upgrade
-
-        if action == "recover":
-            return recover_upgrade(instance, store)
-        if action in ("check", "apply"):
-            if action == "check":
-                try:
-                    descriptor = discover()
-                except LurkerError:
-                    if payload.get("automatic") is True:
-                        return {"update": None}
-                    raise
-                latest = descriptor["manifest"]
-                return {
-                    "update": {
-                        "version": latest["version"],
-                        "summary": latest["summary"],
-                        "release_commit": descriptor["release_commit"],
-                    }
-                    if is_newer(latest["version"], settings["runtime_version"])
-                    else None
-                }
-            require(
-                payload.get("authorized") is True, "UPGRADE_AUTHORIZATION_REQUIRED", "需要用户已明确要求升级"
-            )
-            plan_path = instance.maintenance / "upgrade-plan.json"
-            if plan_path.exists():
-                descriptor = json.loads(plan_path.read_text())
-            else:
-                descriptor = discover()
-                write_json(plan_path, descriptor)
-            result = apply_upgrade(instance, store, settings, descriptor)
-            if result.get("upgraded"):
-                plan_path.unlink(missing_ok=True)
-            return result
-    if command == "uninstall":
-
-        def stop_all(_):
-            for account in store.all("SELECT id FROM accounts WHERE tracking_state='active'"):
-                store.control(account["id"], "stop")
-            return {
-                "data_retained": True,
-                "next": "finish existing runs; remove only this Bot routine and binding using verified native tools",
-            }
-
-        return mutate({"instance_id": instance.id}, stop_all)
-    if command == "star":
-        from .star import apply, invite
-
-        if action == "invite":
-            return {"invitation": invite(payload.get("event"))}
-        if action == "apply":
-            return apply(payload.get("account"), payload.get("confirmed"))
-    raise LurkerError("INVALID_REQUEST", "命令或 action 不受支持")
-
-
-def envelope(request_id, *, result=None, error=None, store=None):
-    pending, proof = [], []
-    due = None
-    if store:
-        pending = [
-            r["id"]
-            for r in store.all(
-                "SELECT id FROM notifications WHERE state IN ('pending','retry_wait') AND (next_attempt_at IS NULL OR next_attempt_at<=?) ORDER BY id",
-                (now(),),
-            )
-        ]
-        proof = [
-            r["id"]
-            for r in store.all(
-                "SELECT id FROM works WHERE processing_state IN ('pending_proofread','proofreading') ORDER BY id"
-            )
-        ]
-        row = store.one("""SELECT min(t) AS value FROM (SELECT next_attempt_at AS t FROM works UNION ALL
-          SELECT next_check_at AS t FROM accounts WHERE tracking_state='active' UNION ALL
-          SELECT next_attempt_at AS t FROM collection_runs) WHERE t IS NOT NULL""")
-        due = row["value"] if row else None
-    status = (
-        "blocked"
-        if error
-        else ("pending" if pending or proof or (isinstance(result, dict) and result.get("pending")) else "ok")
-    )
-    return {
-        "protocol_version": 1,
-        "request_id": request_id,
-        "status": status,
-        "result": result,
-        "error": error,
-        "pending_notification_ids": pending,
-        "pending_proofread_work_ids": proof,
-        "next_action_at": due,
+def validate_input(command, p):
+    specs = {
+        ("setup", "check"): (set(), set()),
+        ("setup", "bind"): (set(), {"bot_id", "routine_id", "host", "sources", "evidence"}),
+        ("config", "validate"): (set(), set()),
+        ("config", "set"): (set(), {"timezone", "monitor", "rate_limit", "limits"}),
+        ("routine", "plan"): (set(), set()),
+        ("status",): (set(), set()),
+        ("watch", "list"): (set(), set()),
+        ("watch", "add"): (set(), {"source", "platform", "author_id", "channel_id"}),
+        ("watch", "source"): ({"watch_id", "variant"}, set()),
+        ("watch", "purge"): ({"watch_id"}, {"confirmed"}),
+        ("watch", "test-latest"): ({"watch_id"}, set()),
+        ("poll",): (set(), {"automatic", "watch_id"}),
+        ("metadata", "retry"): ({"update_id"}, set()),
+        ("dispatch", "next"): (set(), {"foreground_test", "automatic"}),
+        ("dispatch", "skip-queued"): ({"update_ids"}, set()),
+        ("dispatch", "list"): (set(), {"state"}),
+        ("api", "verify-and-resume"): ({"hold_id", "params"}, set()),
+        ("export", "watches"): ({"path"}, set()),
+        ("export", "updates"): ({"path"}, {"watch_id", "since", "until"}),
+        ("upgrade", "check"): (set(), {"quiet"}),
+        ("upgrade", "apply"): (set(), {"confirmed"}),
+        ("maintenance", "resume"): (set(), set()),
+        ("star", "invite"): ({"event"}, set()),
+        ("star", "apply"): ({"account"}, {"confirmed"}),
     }
+    for action in ("pause", "resume", "remove"):
+        specs[("watch", action)] = ({"watch_id"}, set())
+    for action in ("uninstall", "purge-instance"):
+        specs[(action,)] = (
+            set(),
+            {"confirmed", "host_detached", "backup_path", "discard_backup", "abandon_unresolved"},
+        )
+    if command in {("dispatch", "report"), ("dispatch", "resolve")}:
+        from .delivery import validate_receipt
+
+        validate_receipt(p)
+        return
+    require(command in specs, "COMMAND_INVALID")
+    required, optional = specs[command]
+    require(required <= set(p) <= required | optional, "INPUT_INVALID")
+    for key in (
+        "automatic",
+        "foreground_test",
+        "confirmed",
+        "host_detached",
+        "discard_backup",
+        "abandon_unresolved",
+        "quiet",
+    ):
+        if key in p:
+            require(type(p[key]) is bool, "INPUT_INVALID")
+    for key in ("watch_id", "update_id", "hold_id", "bot_id", "routine_id"):
+        if key in p:
+            require(isinstance(p[key], str) and 0 < len(p[key]) <= 512, "INPUT_INVALID")
+    for key in ("since", "until"):
+        if key in p:
+            require(type(p[key]) is int and 0 <= p[key] < 4102444800, "INPUT_INVALID")
+    if "since" in p and "until" in p:
+        require(p["since"] <= p["until"], "INPUT_INVALID")
+
+
+def public_watch(row):
+    row = dict(row)
+    row["scan_pending"] = row.pop("scan_state_json", None) is not None
+    return row
+
+
+def execute(instance, command, data):
+    require(
+        isinstance(data, dict) and type(data.get("protocol")) is int and data.get("protocol") == 1,
+        "PROTOCOL_REQUIRED",
+    )
+    p = {k: v for k, v in data.items() if k != "protocol"}
+    validate_input(command, p)
+    store = Store(instance)
+    client = Client(instance)
+    source = TikHub(client)
+    monitor = Monitor(instance, source)
+    if command == ("setup", "check"):
+        return check(instance)
+    if command == ("setup", "bind"):
+        return bind(instance, p)
+    if command == ("config", "validate"):
+        instance.gate("read")
+        instance.credentials()
+        return {"valid": True}
+    if command == ("config", "set"):
+        return configure(instance, p)
+    if command == ("routine", "plan"):
+        return routine_plan(instance)
+    if command == ("status",):
+        return instance_status(instance)
+    if command == ("watch", "list"):
+        return store.list()
+    if command == ("watch", "add"):
+        author = source.resolve_author(
+            p.get("source"),
+            platform=p.get("platform"),
+            author_id=p.get("author_id"),
+            channel_id=p.get("channel_id"),
+        )
+        return public_watch(store.add(author))
+    if command[:1] == ("watch",) and command[1:] in {("pause",), ("resume",), ("remove",)}:
+        return public_watch(
+            store.transition(
+                p["watch_id"], {"pause": "paused", "resume": "active", "remove": "removed"}[command[1]]
+            )
+        )
+    if command == ("watch", "source"):
+        return public_watch(store.change_variant(p["watch_id"], p["variant"]))
+    if command == ("watch", "purge"):
+        return store.purge(p["watch_id"], p.get("confirmed", False))
+    if command == ("watch", "test-latest"):
+        row = monitor.test_latest(p["watch_id"])
+        if row["state"] == "blocked":
+            monitor.metadata(row["id"])
+        with instance.transaction("read") as (db, _):
+            result = db.execute("SELECT id,state,reason FROM updates WHERE id=?", (row["id"],)).fetchone()
+        return dict(result) if result else {"state": "not_eligible"}
+    if command == ("poll",):
+        return monitor.poll(automatic=p.get("automatic", False), watch_id=p.get("watch_id"))
+    if command == ("metadata", "retry"):
+        return monitor.metadata(p["update_id"])
+    if command == ("dispatch", "next"):
+        return Delivery(instance).next(
+            foreground_test=p.get("foreground_test", False), automatic=p.get("automatic", False)
+        )
+    if command in {("dispatch", "report"), ("dispatch", "resolve")}:
+        return Delivery(instance).report(p)
+    if command == ("dispatch", "skip-queued"):
+        return Delivery(instance).skip(p["update_ids"])
+    if command == ("dispatch", "list"):
+        require(
+            p.get("state", "unknown")
+            in {"blocked", "queued", "sending", "sent", "unknown", "cancelled", "ignored"},
+            "INPUT_INVALID",
+        )
+        with instance.transaction("read") as (db, _):
+            return [
+                dict(r)
+                for r in db.execute(
+                    "SELECT id,watch_id,platform,work_id,author_name,published_at,title,source_url,state,error_code,attempt_id,payload_hash,provider_message_id,send_started_at FROM updates WHERE state=? ORDER BY first_seen_at,id",
+                    (p.get("state", "unknown"),),
+                )
+            ]
+    if command == ("api", "verify-and-resume"):
+        return client.verify(p["hold_id"], p["params"])
+    if command[:1] == ("export",) and command[1:] in {("watches",), ("updates",)}:
+        return export(
+            instance,
+            command[1],
+            p["path"],
+            watch_id=p.get("watch_id"),
+            since=p.get("since"),
+            until=p.get("until"),
+        )
+    if command == ("upgrade", "check"):
+        try:
+            settings = instance.gate("read")
+            d = discover()
+            newer = semver(d["manifest"]["version"]) > semver(settings["app_version"])
+            return {"available": newer, "current": settings["app_version"], "release": d if newer else None}
+        except LurkerError:
+            if p.get("quiet"):
+                return None
+            raise
+    if command == ("upgrade", "apply"):
+        require(p.get("confirmed") is True, "UPGRADE_AUTHORIZATION_REQUIRED")
+        # Never trust a descriptor supplied in chat. Resolve the fixed official source again.
+        if instance.plan():
+            return Lifecycle(instance).resume()
+        return Lifecycle(instance).begin(discover(), confirmed=True)
+    if command == ("maintenance", "resume"):
+        return Lifecycle(instance).resume()
+    if command == ("star", "invite"):
+        from .star import invite
+
+        return invite(p["event"])
+    if command == ("star", "apply"):
+        from .star import apply
+
+        return apply(p["account"], p.get("confirmed", False))
+    if command in {("uninstall",), ("purge-instance",)}:
+        return uninstall(instance, purge=command == ("purge-instance",), **p)
+    raise LurkerError("COMMAND_INVALID")
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="盯梢者本地 JSON 入口")
-    parser.add_argument("--root", default="/workspace/social-lurker")
-    parser.add_argument("--instance")
-    parser.add_argument(
-        "command",
-        choices=[
-            "init",
-            "doctor",
-            "setup",
-            "config",
-            "accounts",
-            "collect",
-            "tick",
-            "status",
-            "retry",
-            "skip",
-            "proofread",
-            "notifications",
-            "upgrade",
-            "uninstall",
-            "star",
-        ],
-    )
-    parser.add_argument("--request-stdin", action="store_true", required=True)
-    args = parser.parse_args(argv)
-    request_id, store, exit_code = None, None, 0
+    result = None
+    instance = None
+    code = 0
     try:
-        request = json.load(sys.stdin)
-        require(
-            isinstance(request, dict)
-            and request.get("protocol_version") == 1
-            and isinstance(request.get("request_id"), str)
-            and 0 < len(request["request_id"]) <= 200
-            and isinstance(request.get("payload"), dict),
-            "INVALID_REQUEST",
-            "请求需 protocol_version=1、request_id 和 payload",
+        parser = Parser(
+            description="盯梢者轻量 R1：显式实例 + protocol=1 JSON。完整命令见 skills/social-lurker。"
         )
-        request_id = request["request_id"]
-        payload = request["payload"]
-        instance_id = args.instance
-        if args.command == "init" and not instance_id:
-            instance_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "social-lurker:" + request_id))
-        instance = Instance(args.root, instance_id)
-        from .setup import configure_tool_path
-
-        configure_tool_path(instance.root)
-        if args.command == "init":
-            with file_lock(instance.maintenance / "instance.lock"):
-                settings = instance.initialize(
-                    binding_confirmed=payload.get("binding_confirmed"),
-                    platform_bot_id=payload.get("platform_bot_id"),
-                )
-                store = Store(instance.db_path)
-        else:
-            require(instance.db_path.exists(), "INSTANCE_NOT_INITIALIZED", "该实例尚未初始化")
-            store = Store(instance.db_path)
-        control = args.command == "accounts" and payload.get("action") in ("stop", "delete")
-        read_only = args.command in ("doctor", "status", "setup") or (
-            args.command == "accounts" and payload.get("action") == "list"
+        parser.add_argument("--instance", required=True)
+        parser.add_argument(
+            "--json", dest="json_input", help="JSON 参数；省略时从标准输入读取，密钥不得作为参数传入"
         )
-        if control:
-            # Explicit UUID permits stopping even with broken ordinary settings. No new external work.
-            settings = None
-        else:
-            settings = instance.load(platform_bot_id=payload.get("platform_bot_id"))
-        lock = (
-            contextlib.nullcontext()
-            if control or read_only or args.command == "init"
-            else file_lock(instance.maintenance / "instance.lock")
-        )
-        with lock:
-            maintenance_path = instance.maintenance / "upgrade.json"
-            if maintenance_path.exists():
-                phase = json.loads(maintenance_path.read_text())["stage"]
-                require(
-                    phase == "draining" or read_only or control or args.command == "upgrade",
-                    "MAINTENANCE",
-                    "迁移未完成，业务写入暂时关闭",
-                )
-                require(
-                    args.command not in ("init", "collect")
-                    and not (args.command == "accounts" and payload.get("action") in ("add", "resume")),
-                    "MAINTENANCE",
-                    "升级维护期不能新建工作",
-                )
-            result = dispatch(instance, store, settings, args.command, request)
-        response = envelope(request_id, result=result, store=store)
-        if args.command != "star":
+        parser.add_argument("command", nargs="+")
+        args = parser.parse_args(argv)
+        raw = args.json_input
+        if raw is None:
+            require(not sys.stdin.isatty(), "PROTOCOL_REQUIRED")
+            raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+        data = parse_json(raw)
+        instance = Instance(args.instance)
+        result = {"protocol": 1, "ok": True, "result": execute(instance, tuple(args.command), data)}
+    except LurkerError as error:
+        result = {"protocol": 1, "ok": False, "error": error.public()}
+        code = 2
+    except (KeyError, TypeError, ValueError, OverflowError, AttributeError):
+        result = {
+            "protocol": 1,
+            "ok": False,
+            "error": LurkerError("INPUT_OR_STATE_INVALID", "参数或持久状态无效，未透传原始内容").public(),
+        }
+        code = 2
+    except (OSError, sqlite3.Error):
+        result = {
+            "protocol": 1,
+            "ok": False,
+            "error": LurkerError("LOCAL_OPERATION_FAILED", "本地读写失败，请核对实例状态").public(),
+        }
+        code = 2
+    if result is not None:
+        if (
+            instance is not None
+            and not result.get("ok")
+            and "args" in locals()
+            and args.command[0] not in {"status", "config", "star", "upgrade", "setup", "export"}
+        ):
             from .logs import record
 
-            record(
-                instance.path / "logs",
-                args.command,
-                response["status"],
-                settings.get("logging") if settings else None,
-            )
-    except (json.JSONDecodeError, UnicodeError):
-        response, exit_code = (
-            envelope(request_id, error={"code": "INVALID_REQUEST", "message": "JSON 无效"}),
-            2,
-        )
-    except (KeyError, TypeError, ValueError):
-        response, exit_code = (
-            envelope(request_id, error={"code": "INVALID_REQUEST", "message": "请求字段缺失或类型无效"}),
-            2,
-        )
-    except LurkerError as error:
-        response = envelope(request_id, error=error.public(), store=store)
-        if error.code == "INVALID_REQUEST":
-            exit_code = 2
-    except Exception as error:
-        # Never print exception strings/tracebacks: URLs, credentials or content can be embedded in them.
-        response, exit_code = (
-            envelope(
-                request_id,
-                error={"code": "INTERNAL_ERROR", "message": "程序发生内部错误；资料与执行状态保留"},
-            ),
-            1,
-        )
-        print(json.dumps({"event": "internal_error", "type": type(error).__name__}), file=sys.stderr)
-    finally:
-        if store:
-            store.close()
-    print(json.dumps(response, ensure_ascii=False, allow_nan=False))
-    return exit_code
+            record(instance, result["error"]["code"])
+        print(canonical(result))
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

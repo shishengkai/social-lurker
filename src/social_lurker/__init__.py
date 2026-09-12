@@ -1,3 +1,3 @@
-"""Local, per-Bot social archives. No daemon and no LLM API."""
+"""Independent per-Bot publication monitoring. No content processing."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

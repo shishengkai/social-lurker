@@ -1,69 +1,87 @@
-CREATE TABLE accounts (
- id INTEGER PRIMARY KEY, platform TEXT NOT NULL CHECK(platform IN ('wechat_channels','douyin')),
- platform_account_id TEXT NOT NULL, display_name TEXT NOT NULL, profile_url TEXT NOT NULL,
- tracking_state TEXT NOT NULL DEFAULT 'active' CHECK(tracking_state IN ('active','stopped','deleting')),
- watch_epoch INTEGER NOT NULL DEFAULT 1, watch_started_at REAL NOT NULL, stopped_at REAL,
- last_check_started_at REAL, last_check_completed_at REAL, coverage_until REAL, next_check_at REAL,
- last_error_code TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL,
- UNIQUE(platform,platform_account_id)
+PRAGMA foreign_keys = ON;
+PRAGMA application_id = 1397509425;
+PRAGMA user_version = 1;
+
+CREATE TABLE runtime (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  instance_id TEXT NOT NULL UNIQUE,
+  request_count_day TEXT NOT NULL,
+  requests_reserved INTEGER NOT NULL DEFAULT 0 CHECK (requests_reserved >= 0),
+  api_blocked_until INTEGER,
+  api_next_start_at_ms INTEGER,
+  api_holds_json TEXT NOT NULL DEFAULT '[]',
+  last_automatic_slot INTEGER,
+  recovery_applied_slot INTEGER,
+  incidents_json TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL
 );
-CREATE TABLE works (
- id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
- platform_work_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', source_url TEXT NOT NULL,
- published_at REAL, first_seen_at REAL NOT NULL, availability TEXT NOT NULL DEFAULT 'available',
- caption_text TEXT, raw_transcript_text TEXT, raw_text_hash TEXT, transcript_text TEXT,
- transcript_source TEXT, text_obtained_at REAL, text_hash TEXT,
- processing_state TEXT NOT NULL DEFAULT 'pending' CHECK(processing_state IN
- ('pending','fetching','transcribing','pending_proofread','proofreading','submit_unknown','ready','no_speech','retry_wait','blocked','failed','unavailable')),
- attempt_count INTEGER NOT NULL DEFAULT 0, stage_attempts TEXT NOT NULL DEFAULT '{}',
- execution_cycle INTEGER NOT NULL DEFAULT 1, next_attempt_at REAL, external_job_id TEXT,
- asr_provider TEXT, asr_model TEXT, asr_phase TEXT, operation_token TEXT, asr_submitted_at REAL, asr_reviewed_at REAL,
- media_duration_ms INTEGER, last_error_code TEXT, last_error_message TEXT,
- owner_token TEXT, lease_until REAL, work_relpath TEXT,
- proofread_progress TEXT, proofread_rule_version TEXT, proofread_model TEXT, proofread_at REAL,
- created_at REAL NOT NULL, updated_at REAL NOT NULL, UNIQUE(account_id,platform_work_id)
+
+CREATE TABLE watches (
+  id TEXT PRIMARY KEY NOT NULL,
+  platform TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  profile_url TEXT,
+  source_variant TEXT NOT NULL DEFAULT 'default',
+  status TEXT NOT NULL CHECK (status IN ('active','paused','removed')),
+  generation INTEGER NOT NULL DEFAULT 1 CHECK (generation > 0),
+  watch_since INTEGER NOT NULL,
+  discovery_floor INTEGER NOT NULL,
+  initial_check_pending INTEGER NOT NULL DEFAULT 1 CHECK (initial_check_pending IN (0,1)),
+  next_check_at INTEGER NOT NULL,
+  last_attempt_at INTEGER,
+  last_success_at INTEGER,
+  last_scan_upper INTEGER,
+  scan_state_json TEXT,
+  coverage_state TEXT NOT NULL DEFAULT 'new'
+    CHECK (coverage_state IN ('new','bounded','ok','partial','gapped','degraded')),
+  coverage_gaps_json TEXT NOT NULL DEFAULT '[]',
+  failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+  error_code TEXT,
+  error_since INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (platform, author_id),
+  UNIQUE (id, platform)
 );
-CREATE TABLE collection_runs (
- id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
- kind TEXT NOT NULL CHECK(kind IN ('initial','poll','history')), watch_epoch INTEGER NOT NULL,
- request_id TEXT UNIQUE, parent_run_id INTEGER REFERENCES collection_runs(id) ON DELETE SET NULL,
- scope_type TEXT NOT NULL CHECK(scope_type IN ('latest','time','count','all','selected')),
- requested_at REAL NOT NULL, range_start REAL, range_end REAL NOT NULL, requested_count INTEGER,
- reported_total INTEGER, total_basis TEXT, total_observed_at REAL, cursor TEXT,
- enumeration_complete INTEGER NOT NULL DEFAULT 0 CHECK(enumeration_complete IN (0,1)), last_page_at REAL,
- plan_confirmed INTEGER NOT NULL DEFAULT 1 CHECK(plan_confirmed IN (0,1)),
- state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN
- ('queued','running','retry_wait','blocked','completed','completed_with_errors','failed','canceled')),
- started_at REAL, finished_at REAL, attempt_count INTEGER NOT NULL DEFAULT 0,
- last_error_code TEXT, next_attempt_at REAL
+
+CREATE TABLE updates (
+  id TEXT PRIMARY KEY NOT NULL,
+  watch_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  work_id TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  published_at INTEGER,
+  title TEXT NOT NULL DEFAULT '',
+  source_url TEXT,
+  cover_url TEXT,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  eligible_generation INTEGER NOT NULL CHECK (eligible_generation > 0),
+  eligibility_lower INTEGER NOT NULL,
+  eligibility_upper INTEGER NOT NULL,
+  reason TEXT NOT NULL CHECK (reason IN ('new','test')),
+  state TEXT NOT NULL CHECK (state IN
+    ('blocked','queued','sending','sent','unknown','cancelled','ignored')),
+  next_attempt_at INTEGER,
+  failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+  error_code TEXT,
+  attempt_id TEXT UNIQUE,
+  send_started_at INTEGER,
+  payload TEXT,
+  payload_hash TEXT,
+  provider_message_id TEXT,
+  sent_at INTEGER,
+  UNIQUE (platform, work_id),
+  CHECK (eligibility_lower <= eligibility_upper),
+  FOREIGN KEY (watch_id, platform) REFERENCES watches(id, platform) ON DELETE CASCADE,
+  CHECK (state NOT IN ('queued','sending','sent','unknown') OR
+    (published_at IS NOT NULL AND source_url IS NOT NULL AND length(source_url)>0)),
+  CHECK (state NOT IN ('sending','sent','unknown') OR
+    (attempt_id IS NOT NULL AND payload IS NOT NULL AND payload_hash IS NOT NULL)),
+  CHECK (state <> 'sent' OR (provider_message_id IS NOT NULL AND sent_at IS NOT NULL))
 );
-CREATE TABLE collection_items (
- run_id INTEGER NOT NULL REFERENCES collection_runs(id) ON DELETE CASCADE,
- work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
- result TEXT NOT NULL DEFAULT 'pending' CHECK(result IN
- ('pending','acquired','reused','no_speech','failed','unavailable','blocked','skipped')),
- requires_notification INTEGER NOT NULL DEFAULT 0 CHECK(requires_notification IN (0,1)),
- error_code TEXT, created_at REAL NOT NULL, finished_at REAL, PRIMARY KEY(run_id,work_id)
-);
-CREATE TABLE notifications (
- id INTEGER PRIMARY KEY, dedupe_key TEXT NOT NULL UNIQUE,
- kind TEXT NOT NULL CHECK(kind IN ('work','history_summary','incident')),
- work_id INTEGER REFERENCES works(id) ON DELETE CASCADE,
- run_id INTEGER REFERENCES collection_runs(id) ON DELETE CASCADE,
- account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE, watch_epoch INTEGER,
- incident_code TEXT, incident_scope TEXT, resolved_at REAL,
- state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','sending','sent','retry_wait','unknown','canceled','blocked')),
- attempt_count INTEGER NOT NULL DEFAULT 0, next_attempt_at REAL, cancel_reason TEXT,
- provider_message_id TEXT, dispatch_token TEXT, sent_at REAL, last_error_code TEXT,
- created_at REAL NOT NULL, updated_at REAL NOT NULL,
- CHECK((kind='work' AND work_id IS NOT NULL AND run_id IS NULL AND account_id IS NOT NULL AND watch_epoch IS NOT NULL)
- OR (kind='history_summary' AND work_id IS NULL AND run_id IS NOT NULL AND account_id IS NOT NULL AND watch_epoch IS NOT NULL)
- OR (kind='incident' AND work_id IS NULL AND run_id IS NULL AND incident_code IS NOT NULL AND incident_scope IS NOT NULL))
-);
-CREATE INDEX works_account_time ON works(account_id,published_at);
-CREATE INDEX works_due ON works(processing_state,next_attempt_at);
-CREATE INDEX runs_pending ON collection_runs(account_id,state,kind);
-CREATE INDEX items_work ON collection_items(work_id);
-CREATE INDEX notifications_due ON notifications(state,next_attempt_at);
-CREATE UNIQUE INDEX incident_active ON notifications(incident_scope,incident_code) WHERE kind='incident' AND resolved_at IS NULL;
-PRAGMA user_version=1;
+
+CREATE INDEX watches_due ON watches(status, next_check_at);
+CREATE INDEX updates_due ON updates(state, next_attempt_at, published_at);
+CREATE INDEX updates_watch ON updates(watch_id, state);

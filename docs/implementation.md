@@ -1,33 +1,41 @@
-# 实现说明
+# 轻量 R1 实现
 
-规范基线来自 social-lurker-brain Releases v0.2。本仓库实现本地程序和 Grok Bot skill；平台原生能力由目标环境验收，不伪造接口。
+代码版本 0.3.0，数据库 schema 1，application_id 1397509425。规范来源为 social-lurker-brain 的 Releases/03_轻量系统设计。此实现是新产品基线，不兼容旧全文版数据库和 CLI。
 
-| 模块 | 责任 |
-|---|---|
-| config / util | 显式 UUID 目录、配置校验、无环境插值的凭据字典、原子写、文件锁和安全相对路径 |
-| schema.sql / store | 五张表、外键与状态约束、短事务、来源归属、文本成果、意图和去重 |
-| providers/tikhub | 视频号 v2 / 抖音 App V3，详情/账号/分页/分享链接；外部 ID 用字符串 |
-| media / vendor | 限额流式下载、128 KiB 头部解密、MP3 16 kHz mono 24 kbps、完整解码与时长核对 |
-| providers/fal | 独立实例凭据、显式 CDN 上传、单次队列提交、查询/取结果，输入保留请求 48 小时 |
-| engine | 有界 tick、冻结范围、去重、续跑、故障与清理；无常驻服务 |
-| proofread | 完整原稿、分段边界、owner/hash、局部 edits、最终全文原子入库 |
-| notifications | 每作品完整正文、一次领取、停止周期检查、真实回执与 unknown 核对 |
-| control / operations | 14 天控制意图、历史准备/确认、停止/恢复/删除/重试/跳过 |
-| upgrade / star | 固定来源及摘要、独立版本包、维护备份/恢复；独立授权可选 Star |
-| install.py / setup | 标准库安装引导、共享依赖准备、重复安装与版本复用；推导本 Bot 配置待办及无实例值的共享 skill 入口 |
+## 模块与边界
 
-0.2.0 将 agent 编排分为 social-lurker（日常）、social-lurker-setup（安装配置）、social-lurker-upgrader（升级）；共用 Star 规则置于 upgrader/references。三个 skill 使用同一个程序和当前 Bot 的五张表。原生平台注册、持久绑定、消息测试和 routine 操作由 setup skill 连续推进，本地命令仅提供真实状态和参数，不伪造平台完成记录。
+| 模块 | 职责 |
+| --- | --- |
+| config / util / schedule | 显式实例、完整文件配置、三表库身份、短锁、原子文件、日历时槽 |
+| store / monitor | 关注代次、逐作者停机恢复、页事务、全新增续页、资格冻结、补字段终态 |
+| sources / http | TikHub 元信息适配、固定路径、精确大整数、统一 RPS/并发、持久 429 与原路径故障恢复 |
+| delivery / state | 四字段消息、不可变发送许可、可信回执、unknown、运维提醒及覆盖缺口 |
+| releases / lifecycle | 固定官方不可变发布、包摘要、升级提交点、冻结回执重放、原生调度恢复交接 |
+| operations / cli / logs | 安装/绑定/配置/状态/导出/卸载、protocol=1 JSON、只记录错误码的轮转日志 |
+| star | 当前成功事件后的可选邀请，独立同意及当前 GitHub 账号复核 |
 
-额外技术字段：collection_runs.plan_confirmed 用于“只清点元信息”与“允许媒体处理”的明确区分；works.asr_submitted_at/asr_reviewed_at 区分实际提交和人工核对后的等待检查。它们是执行状态，不是配置副本，不增加业务表。
+原生 routine 和发送工具属于 Grok Bot，由两个 skill 调用宿主实际提供的能力；Python 不猜工具名称，不运行 Web server、守护进程或系统 cron。每次激活最多 20 次交付由宿主日常 skill 的循环控制，`routine plan` 给出当前限制；每个许可、候选资格和回执由 Python 强制校验。
 
-当前分页采取保守全范围清点：只有供应商明确尾页才完成枚举，并按发布时间选择最新/N 条。没有用未验证的排序假设提前截断；每次最多 100 页，后续从游标续扫。视频号非空列表的 up_continue=0 记 unknown；已实测尾页 videos=[]、count=0、up_continue=0（仍带游标），三个条件同时成立才结束。其他游标循环/尾页不可靠情况阻塞，不把主页数量等同于取全。此策略可能增加 TikHub 调用次数；日常扫描优化需先取得可靠排序/尾页证据。
+## 状态与并发
 
-各 Bot 一条可推进的作品占执行名额；已知 ASR 任务和校对交接继续占用。阻塞/失败/提交未知不无限卡住其他作品。共享 OS 锁限制下载/解密/转码；ASR 等待不占共享重处理锁。查询在 tick 的剩余预算内间隔 10–30 秒进行，预算不足留到已有 routine。
+SQLite 使用 DELETE journal、外键与 5 秒 busy timeout，只允许 runtime、watches、updates 三表。连接不自动创建数据库；配置 ID、schema 或文件版本不一致时拒绝写入。所有短状态操作持有 state.lock；固定锁顺序 poll → request → state。网络与限速等待持 request.lock，不占短状态锁，暂停可以立即改变代次。在途结果回写复核当前代次。
 
-ASR 提交前提交 submitting 意图；响应丢失或任务 ID 入库前崩溃恢复为 submit_unknown。明确拒绝才允许有界重试。HTTP/服务错误只输出稳定码，不透传原始正文、签名 URL、异常字符串。上传对象实际过期仍须观察，提交保留参数不等于远端删除已证实。
+扫描上下界与作品资格分别持久保存。第一页整页去重，在写入前判断是否全新增；页面、续页决定、游标和首次标记同一事务提交。未来日期不会提前占用去重 ID；缺时间作品补齐后证实未来，仅移除没有许可或回执的同代次 blocked。有效响应仍缺字段则停止自动重复该补查方案，正常列表或用户明确重试可再次补齐。
 
-校对 next/submit 使用数据库领取 token 和 600 秒租约。编辑结构校验只保证覆盖，不保证模型语义；不能用它宣称零错字。已保存原稿后清理媒体，校对失败不重复 ASR。运行期 settings 改动不更换已保存 ASR provider/model/task_id。
+自动和手动 poll 都按共同旧槽快照逐作者判断停机；只有实际命中才推进恢复槽。API 门禁仍领取正常自动槽，避免把供应商中断当作本地停机。所有请求每实例合计默认 1 RPS、并发 1；结束时间加间隔保守推进下一开始时间。普通临时错误使用 30/120/600 秒下限和抖动，后续允许轮次再试；关联作者/作品失败计数决定层级，独立前台解析无持续失败计数时使用第一层。429 的 Retry-After 和本地下限取更晚时间。没有每日请求额度上限，也不协调其他 Bot 的账户用量。
 
-历史失败重试建立 selected 子批次，旧 collection_items 终态不回写。stop 更新 watch_epoch 并原子取消未启动 run 和待发意图；sending 已可能发出，转 unknown 待真实回执。已开始 run 按冻结范围继续。升级维护是单独状态，不通过 stop 实现。
+消息正文使用固定排版、标题显示 120 字，原链接不截断；图片只有已验证宿主支持且列表返回可公开 HTTPS 地址时使用。整个结构化载荷按核验的宿主长度单位保守计数，超限 blocked，不拆分、不生成摘要。发送必须使用许可原文；unknown 不重试，可信 not_sent 才可重新排队。用户暂停后真实 sent 仍登记。
 
-首版只登记 schema=1。尚无生产旧库；遇未登记的未来 schema/migrate_from 明确拒绝，不假装通用迁移。正式新 schema 必须加入真实迁移和回滚测试才能发布。
+## 平台证据
+
+默认适配能力为 unverified，不以本地 fixture 授予无人值守能力。`settings.host.evidence_ref.sources` 用 schema=1 结构记录平台/渠道、metadata-r1.1 适配版本、覆盖等级和真实证据引用。抖音支持 normal/lite 显式选择，`watch source` 换渠道清扫描并保留账本；运行时不盲目双查。视频号支持原 username，或明确 channel_id 经专用端点转换；分享链接中的短码不能当账号短号。
+
+抖音必要字段按作品 ID 详情补查采用官方 [fetch_one_video](https://docs.tikhub.io/186826219e0)，仅提取元信息，不按文档建议自动切另一套 Web API。视频号精简详情 raw=false 的历史样本曾只回错误信息，历史列表续页样本存在重复；本版对此保持验证门禁，尚未重跑付费验证。未知身份/尾页不作为“无更新”。
+
+## 升级恢复
+
+maintenance.json 是唯一维护计划。prepared 排空在途请求和发送；frozen 后拒绝普通写入并允许专用回执收件箱。备份位于现有 backups，清单核验完整性；候选由目标版本自检后才能切换。
+
+数据库和 settings 是两个独立文件：先持久记录 switching，再依次替换。中断处于 switching 默认恢复旧组合；持久 committed 后永不恢复旧快照。所选版本重放回执时先提交 DB 再标记收件箱，重放幂等。最后一批回执与 business_writes_open 在同一短锁内衔接，避免遗漏迟到结果。原生 routine 恢复失败保留开放写入，使用最新关注快照及绑定摘要核对宿主证明，完成后才归档计划。
+
+日志最多当前文件和两份轮转，每份约 2 MiB；只存时间与固定错误码。凭据、正文、游标、原始响应、GitHub 账号与 Star 选择不入日志。默认卸载保留资料；完整清除需明确范围、备份选择和未决回执核对。

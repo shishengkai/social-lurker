@@ -1,101 +1,42 @@
 {
-  "observed_at": "2026-09-11T22:45:03.627531+00:00",
-  "code_state": "local uncommitted development implementation",
-  "automated_tests": {
-    "passed": 51,
-    "ruff": "passed",
-    "environment": "macOS arm64 / Python 3.12.13"
-  },
-  "wechat": {
-    "work_id": "14991940714846493129",
-    "source_bytes": 60660900,
-    "audio_bytes": 164487,
-    "audio_duration_ms": 54612,
-    "decrypt_and_full_decode": "passed",
-    "accessible_metadata_count": 134,
-    "tail": {
-      "items": 0,
-      "has_more": false,
-      "has_cursor": true
+  "version": "0.3.0",
+  "design": "lightweight-r1",
+  "schema_version": 1,
+  "observed_at": "2026-09-13T01:50:14+08:00",
+  "scope": "local_worktree",
+  "python": "3.12.13",
+  "checks": {
+    "pytest": {
+      "passed": 72,
+      "failed": 0
     },
-    "source_link": {
-      "detail_identity_matches": true,
-      "author_matches": true,
-      "share_url_obtained": true
+    "ruff": "passed",
+    "format": "passed",
+    "compileall": "passed",
+    "git_diff_check": "passed",
+    "smoke_install": {
+      "instances": 2,
+      "repeat_preserved_credentials": true,
+      "real_api_calls": 0,
+      "host_messages": 0
     }
   },
-  "douyin": {
-    "work_id": "7684230783506189604",
-    "source_bytes": 61824227,
-    "audio_bytes": 2360831,
-    "audio_duration_ms": 786740,
-    "full_decode": "passed",
-    "pagination": "bounded pages only; all-history not tested"
-  },
-  "whisper": {
-    "model": "fal-ai/whisper",
-    "input_duration_ms": 54612,
-    "paid_submission_limit": 1,
-    "requested_input_retention_seconds": 172800,
-    "actual_expiry_verified": false,
-    "native_proofreading": "not_tested",
-    "upload": "succeeded",
-    "submission": "acknowledged",
-    "result": "completed",
-    "characters": 291,
-    "text_sha256": "d6bfab6e49e57ecad41be1706f8a5050020b7e3942e0c6aaed4c45c518f4166e",
-    "database_integrity": "ok",
-    "pending_native_proofreading": true
-  },
-  "not_verified": [
-    "Grok Bot identity and persistent storage",
-    "Grok Bot native proofreading",
-    "Native notification and receipt; long-message limits",
-    "Routine scheduling and zero execution traces",
-    "Actual fal input expiry after 48 hours",
-    "Live stable release upgrade",
-    "GitHub CI and target Linux runtime"
+  "paid_api_calls": 0,
+  "host_messages": 0,
+  "software_release_published": false,
+  "git_delivered": false,
+  "live_acceptance": "pending",
+  "physical_skills": [
+    "social-lurker",
+    "social-lurker-maintainer"
   ],
-  "external_delivery": "none",
-  "installation": {
-    "launcher_dispatch": "passed",
-    "credential_configuration": "passed",
-    "doctor_checks": {
-      "python": true,
-      "ffmpeg": true,
-      "ffprobe": true,
-      "node": true,
-      "mp3_encoder": true,
-      "decrypt_assets": true,
-      "credentials": true,
-      "database": true,
-      "delivery_verified": false
-    },
-    "empty_tick": "no notifications",
-    "native_delivery_verified": false
-  },
-  "installation_0_2_0": {
-    "observed_at": "2026-09-12T14:35:15+08:00",
-    "code_state": "local uncommitted changes after 57d1d37",
-    "tests_passed": 66,
-    "ruff": "passed",
-    "skill_count": 3,
-    "local_smoke": "passed",
-    "cold_bootstrap": {
-      "base": "Debian bookworm / Python 3.9 / Git",
-      "linux_aarch64": "passed",
-      "linux_x86_64": "passed under Docker Desktop emulation on ARM Mac",
-      "python": "3.12.14",
-      "node": "22.23.2",
-      "ffmpeg": "7.1.1"
-    },
-    "repeat_preserves_settings_credentials_and_text": true,
-    "second_bot_reuses_package_with_empty_database_and_credentials": true,
-    "minimal_path_doctor": "passed",
-    "grok_acceptance_pending": true,
-    "native_registration_or_routine_created": false,
-    "paid_api_calls": 0,
-    "new_ci_executed_on_github": false,
-    "formal_release_install_or_upgrade_verified": false
-  }
+  "pending": [
+    "grok_identity_and_persistent_directory",
+    "grok_routine_and_strong_silence",
+    "grok_image_text_and_real_receipts",
+    "tikhub_metadata_and_pagination_live",
+    "linux_missing_python_bootstrap",
+    "immutable_stable_release_install_upgrade",
+    "remote_ci"
+  ]
 }

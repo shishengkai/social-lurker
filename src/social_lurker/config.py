@@ -1,265 +1,327 @@
+"""Explicit, per-Bot settings, credentials and version-fenced SQLite transactions."""
+
+import contextlib
 import copy
-import hashlib
-import json
-import platform
-import re
+import math
 import shutil
-import subprocess
-import sys
-import uuid
+import sqlite3
+import tempfile
+import time
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from dotenv import dotenv_values
-
 from . import __version__
 from .errors import LurkerError, require
-from .util import atomic_write, safe_path, write_json
+from .schedule import minute, next_slot, utc_day
+from .util import atomic_json, ident, lock, parse_json, safe_path, semver
 
+APPLICATION_ID = 1397509425
+SCHEMA_VERSION = 1
+STAGES = {"prepared", "frozen", "candidate_ready", "switching", "committed", "rolled_back", "done"}
 DEFAULTS = {
-    "schema_version": 1,
-    "instance_id": "",
-    "runtime_version": __version__,
-    "platform_bot_id": None,
-    "binding_confirmed": False,
+    "config_version": 1,
+    "instance_id": None,
+    "app_version": __version__,
     "timezone": "Asia/Shanghai",
-    "check_interval_minutes": 30,
-    "processing": {"max_parallel_works": 1, "max_attempts": 3, "retry_delays_seconds": [60, 300]},
-    "retention": {"failed_work_days": 3},
-    "logging": {"max_file_mb": 10, "backup_count": 5},
-    "services": {
-        "wechat_channels": {"provider": "tikhub", "api_family": "wechat_channels_v2"},
-        "douyin": {"provider": "tikhub", "api_family": "douyin_app_v3"},
-        "asr": {
-            "provider": "fal",
-            "model": "fal-ai/whisper",
-            "transport": "http_queue",
-            "upload": "fal_cdn",
-            "language": None,
-            "task": "transcribe",
-            "diarize": False,
-            "chunk_level": "segment",
-        },
-        "proofreading": {
-            "provider": "grok_bot",
-            "enabled": True,
-            "segment_max_chars": 6000,
-            "context_chars": 300,
-        },
+    "source": "tikhub",
+    "monitor": {
+        "interval_seconds": 7200,
+        "schedule_anchor": "07:00",
+        "quiet_hours": {"start": "00:00", "end": "07:00"},
+        "overlap_seconds": 172800,
+        "pagination_mode": "all_new_pages",
+        "max_scan_age_seconds": 86400,
     },
-    "media": {
-        "format": "mp3",
-        "container": "mp3",
-        "sample_rate_hz": 16000,
-        "channels": 1,
-        "bitrate_kbps": 24,
-        "max_source_bytes": 1073741824,
-        "max_audio_bytes": 134217728,
-        "max_duration_seconds": 43200,
+    "rate_limit": {"requests_per_second": 1, "max_concurrent_requests": 1, "endpoint_overrides": {}},
+    "limits": {"poll_seconds": 90, "notifications_per_activation": 20},
+    "host": {
+        "bot_id": None,
+        "routine_id": None,
+        "delivery_verified_at": None,
+        "quiet_execution_verified_at": None,
+        "evidence_ref": None,
     },
-    "execution": {
-        "tick_soft_seconds": 240,
-        "max_new_works_per_tick": 10,
-        "max_pages_per_tick": 100,
-        "lease_seconds": 600,
-        "lease_renew_seconds": 30,
-        "min_free_bytes": 2147483648,
-        "lookback_hours": 48,
-    },
-    "delivery": {"verified": False, "max_chars": None},
-    "routine": {"verified_interval_minutes": None},
 }
 
 
-def validate(settings, instance_id):
-    def shape(actual, template, path=""):
-        require(isinstance(actual, dict), "CONFIG_INVALID", f"配置对象无效：{path}")
-        require(set(template) <= set(actual), "CONFIG_INVALID", f"配置缺少字段：{path}")
-        require(set(actual) <= set(template), "CONFIG_INVALID", f"配置含未知字段：{path}")
-        for key, value in template.items():
-            if isinstance(value, dict):
-                shape(actual[key], value, path + key + ".")
-
-    shape(settings, DEFAULTS)
-    require(settings["instance_id"] == instance_id, "INSTANCE_BINDING_REQUIRED", "实例绑定不匹配")
-    require(settings["schema_version"] == 1, "CONFIG_INVALID", "配置版本不支持")
+def validate(settings):
+    require(isinstance(settings, dict) and set(settings) == set(DEFAULTS), "CONFIG_INVALID")
+    require(settings["config_version"] == 1 and settings["source"] == "tikhub", "CONFIG_VERSION_INVALID")
     require(
-        bool(re.fullmatch(r"\d+\.\d+\.\d+(?:-dev)?", settings["runtime_version"])),
-        "CONFIG_INVALID",
-        "程序版本格式无效",
+        isinstance(settings["instance_id"], str) and 0 < len(settings["instance_id"]) <= 512,
+        "INSTANCE_BINDING_REQUIRED",
     )
+    semver(settings["app_version"])
     try:
         ZoneInfo(settings["timezone"])
-    except (ZoneInfoNotFoundError, ValueError, TypeError):
-        raise LurkerError("CONFIG_INVALID", "时区无效") from None
-    require(settings["services"] == DEFAULTS["services"], "CONFIG_INVALID", "首版服务及校对参数固定")
-    for key in ("format", "container", "sample_rate_hz", "channels", "bitrate_kbps"):
-        require(settings["media"][key] == DEFAULTS["media"][key], "CONFIG_INVALID", "首版音频格式固定")
-    for group in ("processing", "retention", "logging", "media", "execution"):
-        for key, value in settings[group].items():
-            if type(DEFAULTS[group][key]) is int:
-                require(type(value) is int and value > 0, "CONFIG_INVALID", f"{group}.{key} 必须为正整数")
+    except (ZoneInfoNotFoundError, TypeError, ValueError):
+        raise LurkerError("TIMEZONE_INVALID") from None
+    for group in ("monitor", "rate_limit", "limits", "host"):
+        require(
+            isinstance(settings[group], dict) and set(settings[group]) == set(DEFAULTS[group]),
+            "CONFIG_INVALID",
+        )
+    monitor = settings["monitor"]
+    rate = settings["rate_limit"]
+    limits = settings["limits"]
     require(
-        settings["processing"]["max_parallel_works"] == 1 and settings["processing"]["max_attempts"] == 3,
-        "CONFIG_INVALID",
-        "首版每 Bot 并发为 1，每阶段最多 3 次尝试",
+        type(monitor["interval_seconds"]) is int
+        and 60 <= monitor["interval_seconds"] <= 86400
+        and monitor["interval_seconds"] % 60 == 0,
+        "SCHEDULE_INVALID",
     )
-    delays = settings["processing"]["retry_delays_seconds"]
+    minute(monitor["schedule_anchor"])
+    q = monitor["quiet_hours"]
     require(
-        isinstance(delays, list) and len(delays) == 2 and all(type(x) is int and x >= 60 for x in delays),
-        "CONFIG_INVALID",
-        "重试延迟无效",
+        isinstance(q, dict) and set(q) == {"start", "end"} and minute(q["start"]) != minute(q["end"]),
+        "SCHEDULE_INVALID",
     )
+    require(monitor["pagination_mode"] == "all_new_pages", "CONFIG_INVALID")
+    for value, minimum in (
+        (monitor["overlap_seconds"], 0),
+        (monitor["max_scan_age_seconds"], 1),
+        (limits["poll_seconds"], 1),
+        (limits["notifications_per_activation"], 1),
+    ):
+        require(type(value) is int and minimum <= value <= 31536000, "CONFIG_INVALID")
+
+    def rate_ok(value):
+        return type(value) in (int, float) and math.isfinite(value) and value > 0
+
     require(
-        type(settings["check_interval_minutes"]) is int and settings["check_interval_minutes"] > 0,
-        "CONFIG_INVALID",
-        "检查间隔无效",
+        rate_ok(rate["requests_per_second"]) and rate["max_concurrent_requests"] == 1, "RATE_CONFIG_INVALID"
     )
-    cap = settings["delivery"]["max_chars"]
-    require(cap is None or (type(cap) is int and cap > 0), "CONFIG_INVALID", "消息上限无效")
-    require(
-        type(settings["delivery"]["verified"]) is bool and type(settings["binding_confirmed"]) is bool,
-        "CONFIG_INVALID",
-        "绑定或交付验证状态无效",
-    )
-    require(
-        settings["platform_bot_id"] is None or isinstance(settings["platform_bot_id"], str),
-        "CONFIG_INVALID",
-        "Bot 标识无效",
-    )
+    from .sources import ENDPOINTS
+
+    require(isinstance(rate["endpoint_overrides"], dict), "RATE_CONFIG_INVALID")
+    for endpoint, value in rate["endpoint_overrides"].items():
+        require(
+            endpoint in ENDPOINTS and rate_ok(value) and value <= rate["requests_per_second"],
+            "RATE_CONFIG_INVALID",
+        )
+    next_slot(time.time(), settings)
+    evidence = settings["host"]["evidence_ref"]
+    if evidence is not None:
+        require(isinstance(evidence, dict) and evidence.get("schema") == 1, "EVIDENCE_INVALID")
+        require(set(evidence) <= {"schema", "host", "sources"}, "EVIDENCE_INVALID")
     return settings
 
 
+def automatic_gate(settings):
+    host = settings["host"]
+    e = (host["evidence_ref"] or {}).get("host", {})
+    require(
+        host["bot_id"]
+        and host["routine_id"]
+        and host["delivery_verified_at"]
+        and host["quiet_execution_verified_at"]
+        and all(
+            e.get(k) is True for k in ("durable_directory", "instance_isolated", "native_schedule_verified")
+        ),
+        "HOST_AUTOMATIC_UNVERIFIED",
+        "后台能力尚待真实验证，当前仅支持前台操作",
+    )
+
+
 class Instance:
-    def __init__(self, root, instance_id):
-        try:
-            require(
-                str(uuid.UUID(instance_id)) == instance_id,
-                "INSTANCE_BINDING_REQUIRED",
-                "需显式 UUID 实例标识",
-            )
-        except (ValueError, TypeError, AttributeError):
-            raise LurkerError("INSTANCE_BINDING_REQUIRED", "需显式 UUID 实例标识") from None
-        self.root = Path(root).resolve()
-        self.id = instance_id
-        self.path = safe_path(self.root, f"bots/{instance_id}")
-        self.settings_path = safe_path(self.path, "settings.json")
-        self.db_path = safe_path(self.path, "lurker.sqlite3")
-        self.maintenance = safe_path(self.path, "maintenance")
-
-    def initialize(self, *, binding_confirmed=False, platform_bot_id=None, runtime_version=None):
+    def __init__(self, path, *, clock=time.time):
         require(
-            binding_confirmed is True, "INSTANCE_BINDING_REQUIRED", "先明确当前 Bot 绑定；复制 Bot 须新实例"
+            path is not None and Path(path).is_absolute(),
+            "INSTANCE_BINDING_REQUIRED",
+            "必须显式指定实例的绝对目录",
         )
-        if self.settings_path.exists():
-            return self.load(platform_bot_id=platform_bot_id)
-        if runtime_version is None:
-            package_manifest = Path(__file__).resolve().parents[2] / "manifest.json"
-            runtime_version = __version__
-            if package_manifest.is_file():
-                installed = json.loads(package_manifest.read_text())
-                require(installed.get("project") == "social-lurker", "CONFIG_INVALID", "安装清单项目不匹配")
-                runtime_version = installed["version"]
-        for folder in ("work", "logs", "maintenance"):
-            safe_path(self.path, folder).mkdir(parents=True, exist_ok=True, mode=0o700)
-        settings = copy.deepcopy(DEFAULTS)
-        settings.update(
-            instance_id=self.id,
-            runtime_version=runtime_version,
-            binding_confirmed=True,
-            platform_bot_id=platform_bot_id,
-        )
-        validate(settings, self.id)
-        if not (self.path / ".env").exists():
-            atomic_write(self.path / ".env", "TIKHUB_API_KEY=\nFAL_KEY=\n")
-        write_json(self.settings_path, settings)
-        return settings
+        self.root = safe_path(path)
+        self.clock = clock
+        self.loaded_version = __version__
 
-    def load(self, *, platform_bot_id=None):
+    def path(self, name):
+        result = safe_path(self.root / name)
+        require(result.is_relative_to(self.root), "UNSAFE_PATH")
+        return result
+
+    def load(self):
         try:
-            settings = validate(json.loads(self.settings_path.read_text()), self.id)
-        except (OSError, ValueError, TypeError, KeyError):
-            raise LurkerError("CONFIG_INVALID", "settings.json 不可读取或格式无效") from None
-        require(settings["binding_confirmed"], "INSTANCE_BINDING_REQUIRED", "实例尚未绑定")
-        if settings["platform_bot_id"] is not None:
+            return validate(parse_json(self.path("settings.json").read_bytes()))
+        except FileNotFoundError:
+            raise LurkerError("INSTANCE_NOT_INSTALLED", "请先安装独立轻量实例") from None
+
+    def plan(self):
+        p = self.path("maintenance.json")
+        if not p.exists():
+            return None
+        try:
+            value = parse_json(p.read_bytes(), 8 * 1024 * 1024)
             require(
-                platform_bot_id == settings["platform_bot_id"],
-                "INSTANCE_BINDING_REQUIRED",
-                "Bot 稳定标识不匹配",
+                isinstance(value, dict) and value.get("protocol") == 1 and value.get("stage") in STAGES,
+                "MAINTENANCE_INVALID",
+            )
+            require(
+                type(value.get("business_writes_open")) is bool
+                and isinstance(value.get("pending_receipts"), list),
+                "MAINTENANCE_INVALID",
+            )
+            require(value.get("instance_id") == self.load()["instance_id"], "MAINTENANCE_INVALID")
+            require(
+                isinstance(value.get("plan_id"), str)
+                and 0 < len(value["plan_id"]) <= 128
+                and "/" not in value["plan_id"]
+                and ".." not in value["plan_id"],
+                "MAINTENANCE_INVALID",
+            )
+            require(semver(value["target_version"]) > semver(value["source_version"]), "MAINTENANCE_INVALID")
+            import re
+
+            require(
+                all(re.fullmatch("[0-9a-f]{40}", value[k]) for k in ("source_sha", "target_sha")),
+                "MAINTENANCE_INVALID",
+            )
+            require(value.get("schema_version") == SCHEMA_VERSION, "MAINTENANCE_INVALID")
+            require(
+                not value["business_writes_open"] or value["stage"] in {"committed", "rolled_back", "done"},
+                "MAINTENANCE_INVALID",
+            )
+            if value["stage"] != "prepared":
+                require(
+                    value.get("backup") == "backups/" + value["plan_id"]
+                    and isinstance(value.get("old_settings"), dict),
+                    "MAINTENANCE_INVALID",
+                )
+                require(
+                    validate(value["old_settings"])["instance_id"] == value["instance_id"],
+                    "MAINTENANCE_INVALID",
+                )
+            for item in value["pending_receipts"]:
+                require(
+                    isinstance(item, dict)
+                    and item.get("state") in {"pending", "applied", "rejected"}
+                    and isinstance(item.get("receipt"), dict),
+                    "MAINTENANCE_INVALID",
+                )
+            return value
+        except (ValueError, KeyError, TypeError, LurkerError):
+            raise LurkerError("MAINTENANCE_INVALID", "维护计划无效，已停止业务写入；请修复计划") from None
+
+    def gate(self, mode="write", *, check_version=True):
+        plan = self.plan()
+        if plan and not (
+            plan["stage"] in {"committed", "rolled_back", "done"} and plan["business_writes_open"]
+        ):
+            require(
+                plan["stage"] == "prepared" and mode in {"read", "write", "result"},
+                "MAINTENANCE_ACTIVE",
+                "维护中，本次操作尚未执行",
+            )
+        settings = self.load()
+        if check_version:
+            require(
+                settings["app_version"] == self.loaded_version,
+                "VERSION_CHANGED",
+                "版本绑定已改变，请从稳定入口重入",
             )
         return settings
+
+    @contextlib.contextmanager
+    def transaction(self, mode="write", *, maintenance=False):
+        with lock(self.root, "state.lock"):
+            settings = self.load() if maintenance else self.gate(mode)
+            with self.connection(settings, mode) as db:
+                yield db, settings
+
+    @contextlib.contextmanager
+    def connection(self, settings, mode="write"):
+        # Caller already holds state.lock; used by normal and frozen-receipt paths.
+        path = self.path("state.sqlite")
+        require(path.is_file(), "DATABASE_MISSING", "数据库不存在；不会自动重建")
+        db = sqlite3.connect(path.as_uri() + "?mode=rw", uri=True, timeout=5, isolation_level=None)
+        db.row_factory = sqlite3.Row
+        try:
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("PRAGMA busy_timeout=5000")
+            require(
+                db.execute("PRAGMA application_id").fetchone()[0] == APPLICATION_ID,
+                "DATABASE_IDENTITY_INVALID",
+            )
+            require(db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION, "SCHEMA_UNSUPPORTED")
+            require(
+                {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                == {"runtime", "watches", "updates"},
+                "DATABASE_IDENTITY_INVALID",
+            )
+            require(
+                db.execute("SELECT instance_id FROM runtime WHERE singleton=1").fetchone()[0]
+                == settings["instance_id"],
+                "INSTANCE_MISMATCH",
+            )
+            db.execute("BEGIN IMMEDIATE" if mode != "read" else "BEGIN")
+            yield db
+            db.execute("COMMIT")
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+        finally:
+            db.close()
+
+    def initialize(self, *, instance_id=None, bot_id=None):
+        if self.root.exists() and any(self.root.iterdir()):
+            with self.transaction("read"):
+                pass
+            return {"created": False, "instance_id": self.load()["instance_id"]}
+        self.root.parent.mkdir(parents=True, exist_ok=True)
+        stage = Path(tempfile.mkdtemp(prefix=".lurker-install-", dir=self.root.parent))
+        try:
+            stage.chmod(0o700)
+            settings = copy.deepcopy(DEFAULTS)
+            settings["instance_id"] = instance_id or ident()
+            settings["host"]["bot_id"] = bot_id
+            validate(settings)
+            atomic_json(stage / "settings.json", settings)
+            from .util import atomic_bytes
+
+            atomic_bytes(stage / ".env", b"TIKHUB_API_KEY=\n")
+            db = sqlite3.connect(stage / "state.sqlite")
+            try:
+                db.executescript(Path(__file__).with_name("schema.sql").read_text())
+                db.execute("PRAGMA journal_mode=DELETE")
+                now = int(self.clock())
+                db.execute(
+                    "INSERT INTO runtime(singleton,instance_id,request_count_day,updated_at) VALUES(1,?,?,?)",
+                    (settings["instance_id"], utc_day(now), now),
+                )
+                db.commit()
+            finally:
+                db.close()
+            (stage / "state.sqlite").chmod(0o600)
+            if self.root.exists():
+                self.root.rmdir()
+            stage.rename(self.root)
+            from .util import fsync_dir
+
+            fsync_dir(self.root.parent)
+            return {"created": True, "instance_id": settings["instance_id"]}
+        finally:
+            if stage.exists():
+                shutil.rmtree(stage)
 
     def credentials(self):
-        # Never interpolate the host environment or call load_dotenv/os.environ.update.
-        try:
-            values = dotenv_values(safe_path(self.path, ".env"), interpolate=False)
-        except (OSError, UnicodeError):
-            raise LurkerError("CREDENTIALS_INVALID", ".env 不可读取") from None
-        return {k: values.get(k) for k in ("TIKHUB_API_KEY", "FAL_KEY")}
-
-    def set_credentials(self, values):
+        text = self.path(".env").read_text()
+        require(len(text) < 16384, "ENV_INVALID")
+        found = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            require("=" in line, "ENV_INVALID")
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip()
+            require(k == "TIKHUB_API_KEY" and k not in found, "ENV_INVALID")
+            if v[:1] in {'"', "'"}:
+                require(len(v) >= 2 and v[-1] == v[0], "ENV_INVALID")
+                v = v[1:-1]
+            require(not any(c.isspace() or ord(c) < 32 for c in v), "ENV_INVALID")
+            found[k] = v
         require(
-            isinstance(values, dict) and set(values) <= {"TIKHUB_API_KEY", "FAL_KEY"},
-            "INVALID_REQUEST",
-            "不支持的凭据字段",
+            bool(found.get("TIKHUB_API_KEY")), "CREDENTIALS_MISSING", "请在当前实例 .env 配置 TIKHUB_API_KEY"
         )
-        merged = self.credentials() | values
-        for value in merged.values():
-            require(
-                value is None or (isinstance(value, str) and not any(c in value for c in "\n\r\x00")),
-                "INVALID_REQUEST",
-                "凭据格式无效",
-            )
-        lines = []
-        for key, value in merged.items():
-            escaped = (value or "").replace("\\", "\\\\").replace("'", "\\'")
-            lines.append(f"{key}='{escaped}'\n")
-        atomic_write(self.path / ".env", "".join(lines))
-
-
-def doctor(instance, settings):
-    checks = {"python": sys.version_info >= (3, 12), "ffmpeg": False, "ffprobe": False, "node": False}
-    for name in ("ffmpeg", "ffprobe", "node"):
-        binary = shutil.which(name)
-        if binary:
-            try:
-                p = subprocess.run(
-                    [binary, "-version" if name != "node" else "--version"], capture_output=True, timeout=15
-                )
-                checks[name] = p.returncode == 0
-                if name == "node":
-                    checks[name] = (
-                        checks[name] and int(p.stdout.decode().strip().lstrip("v").split(".")[0]) >= 22
-                    )
-            except (OSError, ValueError, subprocess.TimeoutExpired):
-                pass
-    if checks["ffmpeg"]:
-        p = subprocess.run(
-            [shutil.which("ffmpeg"), "-hide_banner", "-encoders"], capture_output=True, timeout=15
-        )
-        checks["mp3_encoder"] = b"libmp3lame" in p.stdout
-    vendor = Path(__file__).resolve().parents[2] / "vendor/wechat-decrypt"
-    try:
-        provenance = json.loads((vendor / "provenance.json").read_text())
-        checks["decrypt_assets"] = (
-            all(
-                hashlib.sha256((vendor / name).read_bytes()).hexdigest() == expected
-                for name, expected in provenance["files"].items()
-            )
-            and (vendor / "decrypt.cjs").is_file()
-        )
-    except (OSError, ValueError, KeyError, TypeError):
-        checks["decrypt_assets"] = False
-    checks["credentials"] = all(instance.credentials().values())
-    checks["database"] = instance.db_path.exists()
-    checks["delivery_verified"] = settings["delivery"]["verified"]
-    return {
-        "checks": checks,
-        "os": platform.system(),
-        "arch": platform.machine(),
-        "local_ready": all(v for k, v in checks.items() if k != "delivery_verified"),
-        "grok_acceptance_pending": True,
-        "upload_retention": {"requested_seconds": 172800, "remote_expiry_verified": False},
-        "routine_interval_synced": settings["routine"]["verified_interval_minutes"]
-        == settings["check_interval_minutes"],
-    }
+        return found["TIKHUB_API_KEY"]
