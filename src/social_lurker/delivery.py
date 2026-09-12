@@ -2,21 +2,22 @@
 
 import re
 from datetime import datetime
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from .config import automatic_gate
+from .config import automatic_gate, message_limit
 from .errors import LurkerError, require
 from .schedule import allowed
 from .state import array, incident
 from .store import source_url
-from .util import atomic_json, canonical, clean_text, digest, ident, lock, public_url
+from .util import atomic_json, canonical, clean_text, digest, ident, lock, public_cover_url
 
 
 def escaped(value):
     return re.sub(r"([\\`*_{}\[\]()<>#+.!|~-])", r"\\\1", value)
 
 
-def format_payload(row, settings):
+def format_payload(row, settings, *, test_images=False):
     title = clean_text(row["title"], 4096)
     title = (title[:120] + "…") if len(title) > 120 else title
     title = title or "（未提供标题）"
@@ -27,25 +28,26 @@ def format_payload(row, settings):
     )
     link = source_url(row["platform"], row["source_url"])
     require(link, "SOURCE_LINK_INVALID")
-    text = f"**{author} · {platform}**\n\n{escaped(title)}\n\n发布时间：{published}（{settings['timezone']}）\n\n{link}"
+    timezone = "北京时间" if settings["timezone"] == "Asia/Shanghai" else escaped(settings["timezone"])
+    destination = quote(link, safe=":/?#@!$&*+,;=%~")
+    text = f"**{escaped(title)}**\n\n{author} · {platform}  \n{published} · {timezone}\n\n[打开原作品]({destination})"
     evidence = settings["host"].get("evidence_ref") or {}
     host = evidence.get("host", {})
     images = []
-    if host.get("images_verified") is True and public_url(row.get("cover_url")):
+    if test_images:
+        require(
+            public_cover_url(row.get("cover_url")),
+            "TEST_COVER_UNAVAILABLE",
+            "本作品没有合格的列表封面，可继续纯文字试发",
+        )
+    if (host.get("images_verified") is True or test_images) and public_cover_url(row.get("cover_url")):
         images = [{"url": row["cover_url"], "alt": "作品封面"}]
     result = {"text": text, "images": images}
     return check_length(result, settings)
 
 
 def check_length(result, settings):
-    host = (settings["host"]["evidence_ref"] or {}).get("host", {})
-    limit = host.get("max_message_length")
-    unit = host.get("length_unit")
-    require(
-        type(limit) is int and limit > 0 and unit in {"unicode", "utf8", "utf16"},
-        "HOST_LENGTH_UNVERIFIED",
-        "尚未核验宿主消息长度限制",
-    )
+    limit, unit = message_limit(settings)
     raw = canonical(result)
     length = (
         len(raw)
@@ -115,7 +117,10 @@ class Delivery:
                 item["state"] = "unknown"
         db.execute("UPDATE runtime SET incidents_json=?", (canonical(notices),))
 
-    def next(self, *, foreground_test=False, automatic=False):
+    def next(self, *, foreground_test=False, automatic=False, test_images=False, update_id=None):
+        require(not (foreground_test and automatic), "INPUT_INVALID")
+        require(not test_images or (foreground_test and update_id), "IMAGE_TEST_SCOPE_REQUIRED")
+        require(update_id is None or foreground_test, "INPUT_INVALID")
         now = int(self.instance.clock())
         with self.instance.transaction("permit") as (db, settings):
             if automatic:
@@ -133,12 +138,16 @@ class Delivery:
             ).fetchall()
             for raw in rows:
                 row = dict(raw)
-                if settings["host"]["delivery_verified_at"] is None and row["reason"] != "test":
+                if (foreground_test or settings["host"]["delivery_verified_at"] is None) and row[
+                    "reason"
+                ] != "test":
+                    continue
+                if update_id is not None and row["id"] != update_id:
                     continue
                 try:
-                    payload = format_payload(row, settings)
+                    payload = format_payload(row, settings, test_images=test_images)
                 except LurkerError as error:
-                    if error.code == "HOST_LENGTH_UNVERIFIED":
+                    if error.code in {"HOST_LENGTH_UNVERIFIED", "TEST_COVER_UNAVAILABLE"}:
                         raise
                     db.execute(
                         "UPDATE updates SET state='blocked',error_code=?,next_attempt_at=NULL WHERE id=?",
@@ -161,7 +170,7 @@ class Delivery:
                     payload=payload,
                     payload_hash=hashed,
                 )
-            if foreground_test and settings["host"]["delivery_verified_at"] is None:
+            if foreground_test:
                 return None
             notices = array(db.execute("SELECT incidents_json FROM runtime").fetchone()[0])
             item = next((n for n in notices if n["state"] == "pending"), None)

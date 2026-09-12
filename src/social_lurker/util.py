@@ -141,6 +141,34 @@ def public_url(value, domains=None):
         return None
 
 
+def public_cover_url(value):
+    """Allow a public Tencent image's resource signature, never an account credential.
+
+    The ordinary source-link and credential URL policy stays unchanged. These signatures
+    are returned alongside public covers and authorize just that image, not a TikHub API.
+    """
+    if public_url(value):
+        return value
+    if not isinstance(value, str) or len(value) > 8192:
+        return None
+    try:
+        u = urlsplit(value)
+        if u.hostname != "wxapp.tc.qq.com":
+            return None
+        pairs = parse_qsl(u.query, keep_blank_values=True)
+        signatures = [v for k, v in pairs if k == "token"]
+        if len(signatures) != 1 or not re.fullmatch(r"[A-Za-z0-9._~+/=-]{1,2048}", signatures[0]):
+            return None
+        from urllib.parse import urlencode
+
+        unsigned = u._replace(query=urlencode([(k, v) for k, v in pairs if k != "token"])).geturl()
+        if public_url(unsigned) and not any(c.isspace() for c in value) and "\\" not in value:
+            return value
+    except ValueError:
+        pass
+    return None
+
+
 def clean_text(value, maximum):
     require(isinstance(value, str), "METADATA_INVALID")
     value = "".join(c for c in value if not unicodedata.category(c).startswith("C") or c in "\n\t")

@@ -4,7 +4,7 @@ import argparse
 import sqlite3
 import sys
 
-from .config import Instance
+from .config import Instance, message_limit
 from .delivery import Delivery
 from .errors import LurkerError, require
 from .http import Client
@@ -37,7 +37,7 @@ def validate_input(command, p):
         ("watch", "test-latest"): ({"watch_id"}, set()),
         ("poll",): (set(), {"automatic", "watch_id"}),
         ("metadata", "retry"): ({"update_id"}, set()),
-        ("dispatch", "next"): (set(), {"foreground_test", "automatic"}),
+        ("dispatch", "next"): (set(), {"foreground_test", "automatic", "test_images", "update_id"}),
         ("dispatch", "skip-queued"): ({"update_ids"}, set()),
         ("dispatch", "list"): (set(), {"state"}),
         ("api", "verify-and-resume"): ({"hold_id", "params"}, set()),
@@ -67,6 +67,7 @@ def validate_input(command, p):
     for key in (
         "automatic",
         "foreground_test",
+        "test_images",
         "confirmed",
         "host_detached",
         "discard_backup",
@@ -137,6 +138,7 @@ def execute(instance, command, data):
     if command == ("watch", "purge"):
         return store.purge(p["watch_id"], p.get("confirmed", False))
     if command == ("watch", "test-latest"):
+        message_limit(instance.gate("read"))
         row = monitor.test_latest(p["watch_id"])
         if row["state"] == "blocked":
             monitor.metadata(row["id"])
@@ -149,7 +151,10 @@ def execute(instance, command, data):
         return monitor.metadata(p["update_id"])
     if command == ("dispatch", "next"):
         return Delivery(instance).next(
-            foreground_test=p.get("foreground_test", False), automatic=p.get("automatic", False)
+            foreground_test=p.get("foreground_test", False),
+            automatic=p.get("automatic", False),
+            test_images=p.get("test_images", False),
+            update_id=p.get("update_id"),
         )
     if command in {("dispatch", "report"), ("dispatch", "resolve")}:
         return Delivery(instance).report(p)

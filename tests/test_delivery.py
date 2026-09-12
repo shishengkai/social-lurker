@@ -83,7 +83,7 @@ def test_order_all_authors_images_and_length_no_split(instance, watch, clock):
     ingest(instance, other, [publication(other, 2, clock.now - 2)])
     d = Delivery(instance)
     permits = [d.next() for _ in range(3)]
-    assert [p["payload"]["text"].split("/")[-1] for p in permits] == ["1", "2", "3"]
+    assert [p["payload"]["text"].rsplit("/", 1)[-1] for p in permits] == ["1)", "2)", "3)"]
     assert permits[-1]["payload"]["images"] == [{"url": "https://cdn.example.com/a.jpg", "alt": "作品封面"}]
     assert "…" in permits[-1]["payload"]["text"]
     settings = instance.load()
@@ -126,8 +126,8 @@ def test_freeze_journal_dedup_and_replay_after_commit_before_mark(instance, watc
         stage="frozen",
         business_writes_open=False,
         pending_receipts=[],
-        source_version="0.3.0",
-        target_version="0.3.1",
+        source_version="0.3.1",
+        target_version="0.3.2",
         source_sha="b" * 40,
         target_sha="a" * 40,
         schema_version=1,

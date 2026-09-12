@@ -1,6 +1,7 @@
 """Local setup evidence, explicit exports and narrowly scoped instance maintenance."""
 
 import copy
+import json
 import os
 import shutil
 import subprocess
@@ -8,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
-from .config import validate
+from .config import message_limit, validate
 from .errors import LurkerError, require
 from .releases import AUTHORITY, package_bytes, prepare, verify_directory
 from .schedule import context, next_slot
@@ -80,16 +81,9 @@ def install(instance, *, source=None, descriptor=None, bot_id=None):
     }
 
 
-def check(instance):
-    status = instance_status(instance)
-    if status.get("maintenance"):
-        return status
-    settings = instance.load()
+def activation_missing(settings, watches):
+    """Capabilities needed to enable a routine, independent of its observed on/off state."""
     missing = []
-    try:
-        instance.credentials()
-    except LurkerError as error:
-        missing.append(error.code)
     host = settings["host"]
     e = (host["evidence_ref"] or {}).get("host", {})
     for key in ("durable_directory", "instance_isolated", "native_schedule_verified"):
@@ -103,24 +97,52 @@ def check(instance):
         missing.append("HOST_BOT_ID_REQUIRED")
     if not host["routine_id"]:
         missing.append("HOST_ROUTINE_REQUIRED")
-    if not e.get("max_message_length"):
-        missing.append("HOST_LENGTH_UNVERIFIED")
-    for watch in status["watches"]:
+    try:
+        message_limit(settings)
+    except LurkerError as error:
+        missing.append(error.code)
+    for watch in watches:
         if (
             watch["status"] == "active"
             and TikHub(None).capability(settings, watch["platform"], watch["source_variant"]) == "unverified"
         ):
             missing.append("SOURCE_UNVERIFIED:" + watch["platform"] + ":" + watch["source_variant"])
+    return sorted(set(missing))
+
+
+def check(instance):
+    status = instance_status(instance)
+    if status.get("maintenance"):
+        return status
+    settings = instance.load()
+    missing = activation_missing(settings, status["watches"])
+    test_missing = []
+    try:
+        instance.credentials()
+    except LurkerError as error:
+        missing.append(error.code)
+        test_missing.append(error.code)
+    try:
+        message_limit(settings)
+    except LurkerError as error:
+        test_missing.append(error.code)
+    routine = routine_plan(instance)
+    if not routine["synchronized"]:
+        missing.append("HOST_ROUTINE_UNSYNCED")
+    host = (settings["host"]["evidence_ref"] or {}).get("host", {})
     return {
         "instance_id": settings["instance_id"],
         "version": settings["app_version"],
         "mode": "automatic_ready" if not missing else "foreground_only",
         "missing": missing,
+        "test_ready": not test_missing,
+        "test_missing": test_missing,
+        "images_verified": host.get("images_verified") is True,
         "source_capabilities": {
             k: TikHub(None).capability(settings, *k.split(":"))
             for k in ("douyin:normal", "douyin:lite", "wechat_channels:default")
         },
-        "routine": routine_plan(instance),
+        "routine": routine,
     }
 
 
@@ -140,14 +162,27 @@ def routine_snapshot(db, settings):
 def routine_plan(instance):
     with instance.transaction("read") as (db, settings):
         snapshot = routine_snapshot(db, settings)
+        missing = activation_missing(settings, db.execute("SELECT * FROM watches").fetchall())
+    try:
+        instance.credentials()
+    except LurkerError as error:
+        missing.append(error.code)
+    desired = snapshot["active"] and not missing
+    host = (settings["host"]["evidence_ref"] or {}).get("host", {})
+    binding_hash = digest(canonical(snapshot))
     return {
         "routine_id": snapshot["routine_id"],
-        "active": snapshot["active"],
+        "active": desired,
+        "requested_active": snapshot["active"],
+        "observed_active": host.get("routine_active"),
+        "activation_missing": missing,
+        "synchronized": host.get("routine_active") is desired
+        and host.get("routine_binding_hash") == binding_hash,
         "timezone": settings["timezone"],
         "interval_seconds": settings["monitor"]["interval_seconds"],
         "anchor": settings["monitor"]["schedule_anchor"],
         "quiet_hours": settings["monitor"]["quiet_hours"],
-        "binding_hash": digest(canonical(snapshot)),
+        "binding_hash": binding_hash,
         "notifications_per_activation": settings["limits"]["notifications_per_activation"],
         "entry": str(instance.path("run.py")),
         "instance": str(instance.root),
@@ -182,7 +217,10 @@ def bind(instance, data):
                 "images_verified",
                 "max_message_length",
                 "length_unit",
+                "length_evidence",
                 "delivery_update_id",
+                "image_update_id",
+                "image_evidence",
                 "routine_plan_id",
                 "routine_active",
                 "routine_binding_hash",
@@ -205,6 +243,29 @@ def bind(instance, data):
                     and h.get("length_unit") in {"unicode", "utf8", "utf16"},
                     "EVIDENCE_INVALID",
                 )
+            for key in ("length_evidence", "image_evidence"):
+                if key in h:
+                    require(isinstance(h[key], str) and 0 < len(h[key].strip()) <= 2048, "EVIDENCE_INVALID")
+            if any(k in h for k in ("max_message_length", "length_unit", "length_evidence")):
+                require(
+                    all(k in h for k in ("max_message_length", "length_unit", "length_evidence")),
+                    "LENGTH_PROOF_REQUIRED",
+                )
+            if h.get("images_verified"):
+                row = db.execute(
+                    "SELECT state,reason,payload,provider_message_id FROM updates WHERE id=?",
+                    (h.get("image_update_id"),),
+                ).fetchone()
+                require(
+                    row
+                    and row["state"] == "sent"
+                    and row["reason"] == "test"
+                    and row["provider_message_id"]
+                    and bool(json.loads(row["payload"]).get("images"))
+                    and h.get("image_evidence"),
+                    "IMAGE_PROOF_REQUIRED",
+                    "需要已送达的图文试发记录及实际显示证据",
+                )
             if "delivery_update_id" in h:
                 row = db.execute(
                     "SELECT state,reason,provider_message_id,sent_at FROM updates WHERE id=?",
@@ -215,15 +276,16 @@ def bind(instance, data):
                     "DELIVERY_PROOF_REQUIRED",
                 )
                 host["delivery_verified_at"] = row["sent_at"]
-            if h.get("quiet_execution_verified"):
-                host["quiet_execution_verified_at"] = now
+            if "quiet_execution_verified" in h:
+                host["quiet_execution_verified_at"] = now if h["quiet_execution_verified"] else None
             if "routine_active" in h or "routine_binding_hash" in h or h.get("native_schedule_verified"):
                 snapshot = routine_snapshot(db, settings)
                 require(
                     h.get("routine_binding_hash") == digest(canonical(snapshot))
-                    and h.get("routine_active") is snapshot["active"],
+                    and type(h.get("routine_active")) is bool,
                     "ROUTINE_PROOF_STALE",
                 )
+                e.setdefault("host", {})["routine_evidence"] = data["evidence"]
             e.setdefault("host", {}).update(h, evidence=data["evidence"], verified_at=now)
         if "sources" in data:
             require(isinstance(data["sources"], dict), "EVIDENCE_INVALID")
@@ -247,6 +309,15 @@ def bind(instance, data):
                 )
                 e.setdefault("sources", {})[key] = item
         host["evidence_ref"] = e
+        if data.get("host", {}).get("routine_active") is True:
+            instance.credentials()
+            snapshot = routine_snapshot(db, settings)
+            require(
+                snapshot["active"]
+                and not activation_missing(settings, db.execute("SELECT * FROM watches").fetchall()),
+                "ROUTINE_ACTIVATION_UNVERIFIED",
+                "能力验收未完成，不能登记为已启用后台；请按真实暂停状态登记",
+            )
         validate(settings)
         atomic_json(instance.path("settings.json"), settings)
     return check(instance)

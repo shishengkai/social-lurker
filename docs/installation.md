@@ -12,7 +12,7 @@
 python3 install.py --instance /已验证持久目录/social-lurker/当前实例 --bot-id 真实BotID --allow-working-tree
 ```
 
-未传 `--allow-working-tree` 时选择固定官方仓库最高不可变稳定 Release。当前源码中存在 0.3.0 并不代表该 Release 已发布。安装器不会代替用户创建 Git tag 或发布软件。
+未传 `--allow-working-tree` 时选择固定官方仓库最高不可变稳定 Release。当前源码中存在 0.3.1 并不代表该 Release 已发布。安装器不会代替用户创建 Git tag 或发布软件。
 
 创建新实例先原子落下配置、空凭据文件和三表数据库，再通过临时版本包原子进入 app/version。相同实例重复安装保留配置与凭据并核验版本文件；不能以重新安装越过维护计划或切换软件版本。未知数据库、非空未知目录、不同 Bot ID、符号链接路径均拒绝覆盖。macOS 上 `/tmp`、`/var` 等别名应先由调用方解析为实际绝对目录；不能绕过程序的符号链接拒绝策略。
 
@@ -20,12 +20,15 @@ python3 install.py --instance /已验证持久目录/social-lurker/当前实例 
 
 `setup check` 只检查本地事实，不发送测试消息，不创建 routine。未取得证据时 mode=foreground_only。`setup bind` 可登记真实宿主结果引用：
 
-- host：持久目录、实例隔离、原生调度、强静默、单条图文、长度单位/上限。
+- host：持久目录、实例隔离、原生调度、强静默、单条图文、长度单位/上限。长度必须同时提供独立 length_evidence，不能用一次短消息成功推断任意上限；setup check 的 test_ready/test_missing 在获取作品前指出缺项。
 - delivery_update_id：显式试发且已经登记实际 sent 回执的作品；只有满足这一事实程序才记录 delivery_verified_at。
-- routine：使用 `routine plan` 的 binding_hash、active 状态；setup bind 校验它仍对应最新关注和日程。绑定新的 routine_id 后重新取 plan，再登记原生调度成功证据。
+- images：首次明确图文试发使用 `dispatch next` 的 foreground_test:true、test_images:true、update_id，不提前标记图片能力。真实 sent 且已检查实际显示后，用 image_update_id、image_evidence 登记 images_verified:true；纯文字回执不能作为图片证据。
+- routine：`routine plan` 的 requested_active 表示关注需求，active 是验收门禁后的启停目标，observed_active 是最近登记的实际状态。创建暂停任务后绑定真实 ID；按当前 binding_hash 登记原生查询结果。即使关注活跃，也允许如实登记暂停；能力未齐备不能登记已启用。synchronized=false 时继续同步，不把计划值冒充实际状态。
 - sources：平台/渠道、适配版本、覆盖等级及真实样本引用。近期页验证不是全量覆盖承诺。
 
 证据只写入 settings.host.evidence_ref，不增加新的状态文件。时区/日程变更会使旧原生调度验证失效，需重新同步。程序阻止未核验宿主后台运行和未核验平台自动数据请求。测试 fixture 不能用于绕过真实验证。
+
+0.3.0 实例升级后，旧的无依据长度值需要补充 length_evidence；平台适配版本更新为 metadata-r1.2，原适配证据需重新核对。已经 sent/unknown 的作品不会因模板修改而重发；图文验收选尚未发送的作品。保留库与凭据，通过受控版本升级应用补丁，不覆盖原版本目录或删除数据库来绕过校验。
 
 ## 密钥和运行
 

@@ -49,10 +49,12 @@ def instance(tmp_path, clock):
         "host": {
             "max_message_length": 4000,
             "length_unit": "unicode",
+            "length_evidence": "fixture-length-contract",
             "durable_directory": True,
             "instance_isolated": True,
             "native_schedule_verified": True,
             "images_verified": True,
+            "routine_active": True,
         },
         "sources": {},
     }

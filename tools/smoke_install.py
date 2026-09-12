@@ -64,7 +64,7 @@ def main():
         )
         status = run(a / "run.py", "--instance", a, "--json", '{"protocol":1}', "status")
         assert status["updates"] == {} and status["watches"] == []
-        assert len(list((a / "app/0.3.0/skills").glob("*/SKILL.md"))) == 2
+        assert len(list((a / f"app/{first['version']}/skills").glob("*/SKILL.md"))) == 2
         print(
             json.dumps(
                 {

@@ -3,7 +3,7 @@
 from .errors import LurkerError, require
 from .schedule import context, next_slot
 from .state import add_gap, incident
-from .util import canonical, clean_text, digest, ident, parse_json, platform_id, public_url
+from .util import canonical, clean_text, digest, ident, parse_json, platform_id, public_cover_url, public_url
 
 PLATFORMS = {"douyin", "wechat_channels"}
 FACTS = ("attempt_id", "send_started_at", "payload", "payload_hash", "provider_message_id", "sent_at")
@@ -46,7 +46,7 @@ def qualify(db, row, publication, now, *, exhausted=False):
             "last_seen_at": now,
         }
         if publication.cover_url:
-            values["cover_url"] = public_url(publication.cover_url)
+            values["cover_url"] = public_cover_url(publication.cover_url)
     if publication.published_at is not None:
         values["published_at"] = publication.published_at
     if publication.source_url:
@@ -309,7 +309,7 @@ class Store:
                         p.published_at,
                         "" if before else clean_text(p.title, 4096),
                         None if before else link,
-                        None if before else public_url(p.cover_url),
+                        None if before else public_cover_url(p.cover_url),
                         now,
                         now,
                         generation,

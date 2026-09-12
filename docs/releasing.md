@@ -1,9 +1,9 @@
 # 轻量软件发布流程
 
-当前代码 0.3.0。设计 R1 是规范版本，软件 Release 是独立交付动作。本次开发不创建 commit、push、tag 或 GitHub Release。
+当前代码 0.3.1。设计 R1 是规范版本，软件 Release 是独立交付动作。本次开发不创建 commit、push、tag 或 GitHub Release。
 
 1. 完成本地检查和目标环境验收，核对仅有轻量三表/两个 skill。用户授权后提交并推送源码。
-2. 在该精确、干净 commit 上运行 `python tools/build_release.py --output <仓库外绝对目录>`。生成 `social-lurker-0.3.0.tar.gz` 和 `release-manifest.json`。构建器不向仓库写入，不自动发布。
+2. 在该精确、干净 commit 上运行 `python tools/build_release.py --output <仓库外绝对目录>`。生成 `social-lurker-0.3.1.tar.gz` 和 `release-manifest.json`。构建器不向仓库写入，不自动发布。
 3. 由另行授权的发布流程创建指向同一 commit 的标准 vX.Y.Z tag。上传两个资产，核对下载包和清单摘要，并将正式 Release 锁定为 immutable；未锁定时安装器和升级器拒绝选用。不要在锁定后尝试覆盖资产。
 4. 从安装器重新读取该正式 Release，核对包内代码版本、清单版本、tag、Git commit、各文件摘要、schema 与 authority 全部对应，再执行干净环境真实安装验收。
 

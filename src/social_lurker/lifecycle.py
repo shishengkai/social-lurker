@@ -247,10 +247,12 @@ class Lifecycle:
                 atomic_json(self.instance.path("maintenance.json"), plan)
             # Native routine restoration is performed by the host, never guessed by Python.
             with self.instance.connection(settings, "read") as db:
-                from .operations import routine_snapshot
+                from .operations import activation_missing, routine_snapshot
 
                 snapshot = routine_snapshot(db, settings)
-                desired = snapshot["active"]
+                desired = snapshot["active"] and not activation_missing(
+                    settings, db.execute("SELECT * FROM watches").fetchall()
+                )
             original = plan["routine_state"] or {}
             if original.get("routine_id") is not None:
                 host = (settings["host"].get("evidence_ref") or {}).get("host", {})

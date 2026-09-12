@@ -46,12 +46,12 @@ def package(tmp_path):
     shutil.copyfile(ROOT / "tools/launcher.py", source / "tools/launcher.py")
     shutil.copyfile(ROOT / "LICENSE", source / "LICENSE")
     init = source / "src/social_lurker/__init__.py"
-    init.write_text(init.read_text().replace("0.3.0", "0.3.1"))
+    init.write_text(init.read_text().replace("0.3.1", "0.3.2"))
     output = tmp_path / "release"
-    descriptor = builder.build(source, output, version="0.3.1", commit="a" * 40)
-    raw = (output / "social-lurker-0.3.1.tar.gz").read_bytes()
+    descriptor = builder.build(source, output, version="0.3.2", commit="a" * 40)
+    raw = (output / "social-lurker-0.3.2.tar.gz").read_bytes()
     descriptor["archive_url"] = (
-        "https://github.com/shishengkai/social-lurker/releases/download/v0.3.1/social-lurker-0.3.1.tar.gz"
+        "https://github.com/shishengkai/social-lurker/releases/download/v0.3.2/social-lurker-0.3.2.tar.gz"
     )
     return descriptor, raw
 
@@ -87,14 +87,14 @@ def test_crash_boundaries_restore_pair_or_finish_commit(installed, package, stag
         start(installed, package, fail_at(stage))
     expect_rollback = stage in {"switching", "database_switched", "binding_switched"}
     if stage == "committed":
-        installed.loaded_version = "0.3.1"
+        installed.loaded_version = "0.3.2"
     result = Lifecycle(installed).resume()
     if result.get("reenter"):
-        installed.loaded_version = "0.3.1"
+        installed.loaded_version = "0.3.2"
         result = Lifecycle(installed).resume()
     assert result["result"] == ("rolled_back" if expect_rollback else "upgraded")
     assert result["stage"] == "done" and not installed.path("maintenance.json").exists()
-    assert installed.load()["app_version"] == ("0.3.0" if expect_rollback else "0.3.1")
+    assert installed.load()["app_version"] == ("0.3.1" if expect_rollback else "0.3.2")
 
 
 def test_exception_after_durable_commit_never_rolls_back(installed, package):
@@ -105,10 +105,10 @@ def test_exception_after_durable_commit_never_rolls_back(installed, package):
     with pytest.raises(OSError):
         start(installed, package, checkpoint)
     assert installed.plan()["stage"] == "committed"
-    assert installed.load()["app_version"] == "0.3.1"
+    assert installed.load()["app_version"] == "0.3.2"
     with pytest.raises(LurkerError, match="UPGRADE_ALREADY_COMMITTED"):
         Lifecycle(installed).rollback(installed.plan())
-    installed.loaded_version = "0.3.1"
+    installed.loaded_version = "0.3.2"
     assert Lifecycle(installed).resume()["result"] == "upgraded"
 
 
@@ -129,10 +129,17 @@ def test_frozen_late_receipt_replayed_on_rollback(installed, watch, clock, packa
 def test_routine_restore_failure_keeps_business_writes_and_new_pause(installed, watch, package):
     settings = installed.load()
     settings["host"]["routine_id"] = "native-real-fixture"
+    from social_lurker.sources import ADAPTER_VERSION
+
+    settings["host"]["evidence_ref"]["sources"]["douyin:normal"] = {
+        "adapter_version": ADAPTER_VERSION,
+        "level": "recent_pages_verified",
+        "evidence": "fixture-pages",
+    }
     atomic_json(installed.path("settings.json"), settings)
     result = start(installed, package)
     assert result["reenter"]
-    installed.loaded_version = "0.3.1"
+    installed.loaded_version = "0.3.2"
     result = Lifecycle(installed).resume()
     assert result["business_writes_open"] and result["routine_restore"]["active"]
     from social_lurker.store import Store
@@ -172,7 +179,7 @@ def test_stable_launcher_reenters_target_and_rejects_package_tamper(installed, p
     )
     assert p.returncode == 0, p.stdout
     assert json.loads(p.stdout)["result"]["stage"] == "done"
-    target = installed.path("app/0.3.1/social_lurker/cli.py")
+    target = installed.path("app/0.3.2/social_lurker/cli.py")
     target.chmod(0o600)
     target.write_text('raise RuntimeError("must never execute")')
     p = subprocess.run(
@@ -209,7 +216,7 @@ def test_package_digest_and_symlink_injection_rejected(installed, package, tmp_p
     bad = {**descriptor, "archive_sha256": digest(unsafe)}
     with pytest.raises(LurkerError, match="RELEASE_PATH_INVALID"):
         prepare(installed, bad, read=lambda _: unsafe)
-    assert installed.load()["app_version"] == "0.3.0" and installed.plan() is None
+    assert installed.load()["app_version"] == "0.3.1" and installed.plan() is None
 
 
 def test_prepared_waits_for_sending_and_normal_pause_remains_available(installed, watch, package, clock):
@@ -223,7 +230,7 @@ def test_prepared_waits_for_sending_and_normal_pause_remains_available(installed
     Delivery(installed).report(receipt(permit, clock))
     result = Lifecycle(installed).resume()
     assert result["reenter"]
-    installed.loaded_version = "0.3.1"
+    installed.loaded_version = "0.3.2"
     Lifecycle(installed).resume()
     assert rows(installed)[0]["state"] == "sent" and rows(installed, "watches")[0]["status"] == "paused"
 
@@ -232,7 +239,7 @@ def test_done_archive_interruption_reenters_selected_version(installed, package,
     import social_lurker.lifecycle as module
 
     start(installed, package)
-    installed.loaded_version = "0.3.1"
+    installed.loaded_version = "0.3.2"
     original = module.atomic_json
 
     def fail_archive(path, value):

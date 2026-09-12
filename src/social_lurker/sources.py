@@ -2,10 +2,10 @@
 
 import re
 from dataclasses import dataclass, replace
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
-from .errors import require
-from .util import clean_text, platform_id, public_url
+from .errors import LurkerError, require
+from .util import clean_text, platform_id, public_cover_url, public_url
 
 DY = "/douyin/app/v3/"
 WX = "/wechat_channels/v2/"
@@ -20,7 +20,7 @@ ENDPOINTS = {
     WX + "fetch_user_videos": "POST",
     WX + "fetch_video_share_url": "POST",
 }
-ADAPTER_VERSION = "metadata-r1.1"
+ADAPTER_VERSION = "metadata-r1.2"
 
 
 @dataclass(frozen=True)
@@ -69,8 +69,15 @@ def timestamp(value):
 
 
 def wx_detail(data):
+    require(isinstance(data, dict), "RESPONSE_INVALID")
     if data.get("id") is not None:
         return data
+    if data.get("message") and not data.get("objects"):
+        raise LurkerError(
+            "WECHAT_DETAIL_UNAVAILABLE",
+            "视频号详情未返回作品身份，不能据此确认作者",
+            next_action="retry_share_link",
+        )
     objects = data.get("objects")
     require(
         isinstance(objects, list) and len(objects) == 1 and isinstance(objects[0], dict),
@@ -81,12 +88,29 @@ def wx_detail(data):
 
 def cover(value):
     if isinstance(value, str):
-        return public_url(value)
+        return public_cover_url(value)
     if isinstance(value, dict):
         urls = value.get("url_list", [])
         if isinstance(urls, list):
-            return next((public_url(u) for u in urls if public_url(u)), None)
+            return next((public_cover_url(u) for u in urls if public_cover_url(u)), None)
     return None
+
+
+def wechat_cover(media):
+    value = cover(media.get("cover_url"))
+    suffix = media.get("cover_url_token")
+    if not value or not suffix:
+        return value
+    u = urlsplit(value)
+    if u.hostname != "wxapp.tc.qq.com" or not isinstance(suffix, str):
+        return value
+    if any(k == "token" for k, _ in parse_qsl(u.query)):
+        return value
+    pairs = parse_qsl(suffix.lstrip("&?"), keep_blank_values=True)
+    if len(pairs) != 1 or pairs[0][0] != "token":
+        return None
+    candidate = u._replace(query=u.query + ("&" if u.query else "") + urlencode(pairs)).geturl()
+    return public_cover_url(candidate)
 
 
 def publication(platform, item, author_id=None, author_name="", *, from_list=True):
@@ -119,6 +143,10 @@ def publication(platform, item, author_id=None, author_name="", *, from_list=Tru
     desc = item.get("objectDesc") or {}
     require(isinstance(contact, dict) and isinstance(desc, dict), "PAGE_IDENTITY_INVALID")
     aid = platform_id(item.get("username") or contact.get("username") or author_id)
+    require(
+        not item.get("username") or not contact.get("username") or item["username"] == contact["username"],
+        "PAGE_IDENTITY_INVALID",
+    )
     url = next(
         (
             public_url(item.get(k), ("weixin.qq.com",))
@@ -127,11 +155,18 @@ def publication(platform, item, author_id=None, author_name="", *, from_list=Tru
         ),
         None,
     )
-    thumb = cover(item.get("cover_url") or item.get("thumb_url")) if from_list else None
+    thumb = (
+        next(
+            (value for k in ("cover_img_url", "cover_url", "thumb_url") if (value := cover(item.get(k)))),
+            None,
+        )
+        if from_list
+        else None
+    )
     if not thumb and from_list:
         media = item.get("media") or desc.get("media") or []
-        if isinstance(media, dict) and not media.get("cover_url_token"):
-            thumb = cover(media.get("cover_url"))
+        if isinstance(media, dict):
+            thumb = wechat_cover(media)
         if isinstance(media, list) and media and isinstance(media[0], dict):
             thumb = cover(media[0].get("thumb_url") or media[0].get("thumbUrl"))
     return Publication(
@@ -167,6 +202,17 @@ class TikHub:
             (DY + "fetch_user_post_videos") if watch["platform"] == "douyin" else (WX + "fetch_user_videos")
         )
 
+    def wechat_detail(self, params, **request):
+        data = self.client.call(WX + "fetch_video_detail", {**params, "raw": False}, **request)
+        try:
+            return wx_detail(data)
+        except LurkerError as error:
+            if error.code != "WECHAT_DETAIL_UNAVAILABLE":
+                raise
+        # The provider's simplified response can be a successful envelope containing only
+        # an error message. One same-endpoint raw retry is metadata-only and shares all gates.
+        return wx_detail(self.client.call(WX + "fetch_video_detail", {**params, "raw": True}, **request))
+
     def resolve_author(self, source, *, platform=None, author_id=None, channel_id=None, **request):
         if channel_id is not None:
             require(platform == "wechat_channels" and author_id is None and not source, "INPUT_INVALID")
@@ -195,14 +241,17 @@ class TikHub:
                     if platform == "wechat_channels"
                     else DY + "fetch_one_video_by_share_url"
                 )
-                data = self.client.call(
-                    endpoint,
-                    {"share_url": source, **({"raw": False} if platform == "wechat_channels" else {})},
-                    **request,
-                )
-                item = wx_detail(data) if platform == "wechat_channels" else data.get("aweme_detail", {})
+                if platform == "wechat_channels":
+                    item = self.wechat_detail({"share_url": source}, **request)
+                else:
+                    data = self.client.call(endpoint, {"share_url": source}, **request)
+                    item = data.get("aweme_detail", {})
                 parsed = publication(platform, item, from_list=False)
                 aid = parsed.author_id
+                if platform == "wechat_channels" and parsed.author_name != aid:
+                    # This share's resolved work already provides the author's identity and
+                    # name. A redundant profile request can fail independently and costs more.
+                    return Author(platform, aid, parsed.author_name)
         if platform == "douyin":
             data = self.client.call(DY + "handler_user_profile", {"sec_user_id": aid}, **request)
             user = data.get("user") or {}
@@ -215,6 +264,8 @@ class TikHub:
                 "normal",
             )
         data = self.client.call(WX + "fetch_user_profile", {"username": aid, "raw": False}, **request)
+        if data.get("message") and not data.get("username"):
+            raise LurkerError("WECHAT_PROFILE_UNAVAILABLE", "视频号作者资料暂未返回有效身份，请稍后重试")
         require(data.get("username") == aid, "PAGE_IDENTITY_INVALID")
         return Author(platform, aid, clean_text(data.get("nickname") or aid, 512))
 
@@ -277,10 +328,7 @@ class TikHub:
         )
         if p.published_at is None or (p.platform == "douyin" and not p.source_url):
             if p.platform == "wechat_channels":
-                data = self.client.call(
-                    WX + "fetch_video_detail", {"object_id": p.work_id, "raw": False}, **request
-                )
-                detail = wx_detail(data)
+                detail = self.wechat_detail({"object_id": p.work_id}, **request)
             else:
                 data = self.client.call(DY + "fetch_one_video", {"aweme_id": p.work_id}, **request)
                 detail = data.get("aweme_detail") or {}
@@ -319,7 +367,9 @@ def validate_params(endpoint, params):
         require(("share_url" in params) ^ ("object_id" in params), "REQUEST_PARAMS_INVALID")
     for key, value in params.items():
         if key == "raw":
-            require(value is False, "REQUEST_PARAMS_INVALID")
+            require(
+                value is False or (suffix == "fetch_video_detail" and value is True), "REQUEST_PARAMS_INVALID"
+            )
         elif key == "share_url":
             require(public_url(value, ("douyin.com", "weixin.qq.com")), "SOURCE_LINK_INVALID")
         elif key == "last_buffer":

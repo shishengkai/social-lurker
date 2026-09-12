@@ -1,13 +1,13 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-13T01:50:14+08:00",
-  "scope": "local_worktree",
+  "observed_at": "2026-09-12T19:02:00Z",
+  "scope": "local_patch_and_bounded_live_metadata",
   "python": "3.12.13",
   "checks": {
     "pytest": {
-      "passed": 72,
+      "passed": 82,
       "failed": 0
     },
     "ruff": "passed",
@@ -21,22 +21,31 @@
       "host_messages": 0
     }
   },
-  "paid_api_calls": 0,
+  "live_metadata": {
+    "adapter_version": "metadata-r1.2",
+    "wechat_current_share_author": "passed",
+    "wechat_list_author_identity_consistency": 15,
+    "wechat_original_link": "passed",
+    "latest_has_cover": true,
+    "successful_final_run_requests": 3,
+    "additional_development_requests": true,
+    "cover_http_status": 200,
+    "cover_content_type": "image/jpg",
+    "media_body_saved": false
+  },
+  "paid_api_calls": null,
+  "paid_api_calls_note": "Real API calls occurred; final successful run used 3 requests, additional diagnostics not included. Billing requires supplier records.",
   "host_messages": 0,
   "software_release_published": false,
   "git_delivered": false,
-  "live_acceptance": "pending",
-  "physical_skills": [
-    "social-lurker",
-    "social-lurker-maintainer"
-  ],
+  "live_acceptance": "partial_development_evidence_only",
   "pending": [
-    "grok_identity_and_persistent_directory",
-    "grok_routine_and_strong_silence",
-    "grok_image_text_and_real_receipts",
-    "tikhub_metadata_and_pagination_live",
+    "grok_patch_install_and_rendered_card",
+    "grok_native_routine_and_strong_silence",
+    "grok_length_evidence",
+    "tikhub_douyin_and_pagination_coverage",
     "linux_missing_python_bootstrap",
     "immutable_stable_release_install_upgrade",
-    "remote_ci"
+    "patch_remote_ci"
   ]
 }

@@ -107,6 +107,21 @@ def validate(settings):
     return settings
 
 
+def message_limit(settings):
+    evidence = (settings["host"]["evidence_ref"] or {}).get("host", {})
+    limit, unit = evidence.get("max_message_length"), evidence.get("length_unit")
+    require(
+        type(limit) is int
+        and limit > 0
+        and unit in {"unicode", "utf8", "utf16"}
+        and isinstance(evidence.get("length_evidence"), str)
+        and bool(evidence["length_evidence"].strip()),
+        "HOST_LENGTH_UNVERIFIED",
+        "请先登记宿主消息长度与计量单位的真实依据，再获取试发作品",
+    )
+    return limit, unit
+
+
 def automatic_gate(settings):
     host = settings["host"]
     e = (host["evidence_ref"] or {}).get("host", {})
@@ -115,12 +130,14 @@ def automatic_gate(settings):
         and host["routine_id"]
         and host["delivery_verified_at"]
         and host["quiet_execution_verified_at"]
+        and e.get("routine_active") is True
         and all(
             e.get(k) is True for k in ("durable_directory", "instance_isolated", "native_schedule_verified")
         ),
         "HOST_AUTOMATIC_UNVERIFIED",
         "后台能力尚待真实验证，当前仅支持前台操作",
     )
+    message_limit(settings)
 
 
 class Instance:
