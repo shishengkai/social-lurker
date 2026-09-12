@@ -38,7 +38,7 @@ python3 install.py --instance /已验证持久目录/social-lurker/当前实例 
 
 这是显式开发预览交付，不代表发布了稳定 Release，自动升级检查不会自动选择 main。包沿用既有清单格式，不能把其中 channel 字段当作 GitHub 正式发布证明；脚本结果明确标注 development_preview 和精确目标 commit。
 
-返回 routine_restore 时，查询本实例原生任务并按最新 routine plan 同步，使用 setup bind 登记真实启停、binding_hash 和当前 routine_plan_id，再用稳定入口 maintenance resume。新版本长度证据缺少类型或其他能力未验收时，恢复目标保持暂停。存在 maintenance.json 时不得再跑预览升级或改选目标，只从原实例 run.py 继续维护恢复。升级过程不写 .env、不清关注/发送记录，不自动启用尚未验收的后台。
+返回 routine_restore 时，查询本实例原生任务并按最新 routine plan 同步，使用 setup bind 登记真实启停、binding_hash 和当前 routine_plan_id，再用稳定入口 maintenance resume。**routine_plan_id 取 maintenance resume / 预览升级结果外层的 plan_id，即当前维护计划 ID；binding_hash 取 routine plan 的当前结果。两者不能互相代替，也不能把 routine_id 当作维护计划 ID。** 新版本长度证据缺少类型或其他能力未验收时，恢复目标保持暂停。存在 maintenance.json 时不得再跑预览升级或改选目标，只从原实例 run.py 继续维护恢复。升级过程不写 .env、不清关注/发送记录，不自动启用尚未验收的后台。
 
 ## 密钥和运行
 
@@ -51,6 +51,10 @@ python3 install.py --instance /已验证持久目录/social-lurker/当前实例 
 ```
 
 0.3.2 将它传给 `routine poll`。后台随后最多领取 settings.limits.notifications_per_activation 个 `routine next`，二者固定 automatic 模式，拒绝传入降级参数。每个许可只调用一次实际宿主发送工具，再提交可信 `dispatch report`。任何门禁或夜间限制失败都停止，不换前台命令。0.3.1 仍用 poll / dispatch next 且必须 automatic:true；先核对安装版本，不能指示旧实例调用不存在的命令。无通知与可操作故障时不要向用户输出执行过程；宿主不支持时维持前台模式。
+
+检查 poll 结果时还须读取 result.errors 和 scans 中的 stop_reason。envelope 的 ok=true 表示命令返回了结构化结果，不等于每个作者都检查成功；不能把 pages=0 且包含 HTTP_TEMPORARY 记为业务验收通过。
+
+运维调用优先使用稳定 run.py。确需直接导入安装包做诊断时使用 Python 的 `-I -B`，禁止在 app/<version> 生成字节码、日志或临时文件。版本目录有额外文件会被完整性检查拒绝；先核对来源并修复，再重跑稳定入口，不能改用直接库写入绕过该拒绝。2026-09-13 的一次临时诊断产生 9 个 .pyc，隔离这些派生缓存后，两个版本的完整校验及稳定入口恢复正常。
 
 ## 不调用业务的宿主探针
 

@@ -1,6 +1,21 @@
 # 轻量 R1 验证记录
 
-2026-09-13，本地 0.3.2 工作区：**96 项 pytest 通过**，ruff/格式、compileall、git diff --check 和双实例安装冒烟通过。0.3.2 尚未 commit/push，也未应用到 Bot。当前 Grok Bot 实装仍为 0.3.1 / 0a32f70；以下将本地测试与该实例实测分别记录。0.3.1 的 82 项测试、视频号元信息验证及已成功的远端 Python 3.12/3.13 CI 是上一版本证据。
+2026-09-13，0.3.2 / [881ce3a](https://github.com/shishengkai/social-lurker/commit/881ce3a3fe388da633458c7e1af3e66b88088c0c) 已推送并升级到当前 Grok Bot 实例。**96 项 pytest 通过**，ruff/格式、compileall、git diff --check 和双实例安装冒烟通过；[Python 3.12/3.13 GitHub CI](https://github.com/shishengkai/social-lurker/actions/runs/34720040699) 成功。程序交付与数据保全已通过，完整业务验收尚未通过；下文将当前实测与 0.3.1 历史证据分别记录。
+
+## 0.3.2 当前实例交付与验收
+
+- 固定官方 commit 预览升级完成：0.3.1 → 0.3.2，维护归档结果为 done/upgraded，原生 routine 恢复为真实暂停状态。直接读取实例验证 manifest 源 SHA、新旧版本全部文件摘要、备份摘要及 SQLite integrity_check 均通过。
+- 升级后的 watches 和 updates 与维护前备份逐行一致；原关注仍为「AI创变工坊」，14 条 ignored、1 条 sent。旧 app/0.3.1 保留。Bot 比较升级前后的 .env 摘要一致；独立检查其权限仍 0600、修改时间早于升级，未读取或输出密钥。
+- 宿主长度实测消息 t10s1：从桌面实际收到的消息执行“复制”后独立计算，Unicode 2010、UTF-8 2028 字节、ASCII 2001，SHA256 为 e97d3aada4d49ab8bc371026169d1bc449d984becc7a331ebf754b7994f11ebd，与发送参数一致。已登记 measured / utf8 / 2000；2000 是实测范围内的保守操作上限，不是真实宿主最大长度。
+- 正式日间 routine 仍暂停，实际 UI 已核对为 07/09/11/13/15/17/19/21/23 Asia/Shanghai，指令改为 routine poll → routine next，遇门禁不降级，并从 settings.app_version 选择当前 skill。setup check 尚缺原生调度与强静默证据，images_verified=false，模式 foreground_only。这个实例使用服务器 routine，UI 的“测试运行”按钮禁用；[官方说明](https://docs.x.ai/grok-bot/skills-routines-and-automations)提及该能力不代表当前实例可调用。
+- 两平台完整试发尝试未通过：视频号分享解析两次 HTTP_TEMPORARY；抖音先 UPSTREAM_TEMPORARY，后 HTTP_TEMPORARY。未添加临时关注、未领取发送许可、未发送新作品，无法据此验收通知和回执完整链路。程序预留请求计数 5→9；预留次数不等于供应商实际收费次数。
+- 对既有作者的独立前台 poll 也未通过：耗时 30.238 秒，envelope ok=true 但 pages=0、errors/stop_reason 含 HTTP_TEMPORARY，不能只凭 envelope 成功判断业务成功。该次计数 10→11；其间另有一次诊断预留，不计入前述两平台流程。
+- 基础连通性另行通过：实例 curl 到 TikHub 根路径为 200，约 0.112 秒；Python TLS 连接约 0.059 秒。这些只证明基础连接，不证明数据端点可用。额外一次前台诊断保留 Client 门禁、锁、限速和计数，仅将本次整请求上限放宽到 90 秒：约 44.996 秒返回 HTTP 200，但未解析出 videos 列表，计数 11→12。诊断实现未重复包装 code/data；原始响应未保存，具体错误字段未知。标准约 30 秒请求仍失败，不能据此声称没有读超时，亦不能把延长上限作为已验证修复；具体 API 根因未完全确认。
+- 临时诊断直接导入包时产生 9 个派生 .pyc，导致版本文件集合不匹配、稳定入口 ENTRY_STATE_INVALID。已核对均为已验证源码的缓存，将其可恢复地隔离到实例 logs/diagnostic-bytecode-20260913/，未改源码、manifest、数据库或凭据。随后直接调用完整 verify_directory，0.3.1 / 0.3.2 的文件集合与摘要均通过。
+- 缓存隔离后，经稳定入口在真实夜间重跑并独立读回：routine poll 返回 quiet_hours / pages=0，routine next 返回 QUIET_HOURS；请求计数仍 12，updates 仍 ignored=14、sent=1，queued/sending/unknown=0，last_automatic_slot=null。该结果证明新版夜间门禁，不是原生唤醒、日间业务或手机推送静默的证据。
+- 手机镜像尝试停在苹果要求“解锁 iPhone”的界面，无法代替用户完成设备验证。手机链接跳转与后台推送静默仍待真机核对；没有把桌面证据升级为手机验收通过。
+
+实例证据为 logs/host-length-measurement.json、logs/e2e-preview-0.3.2.json 及升级备份中的 snapshot.json / maintenance-result.json。公开文档只保留脱敏结论，不包含凭据、原始响应或图片签名。
 
 ## 0.3.1 真实接口验证
 
@@ -22,7 +37,7 @@
 
 ## 固定 commit 预览升级入口
 
-2026-09-13 按用户“commit & push 并交付实例、全程操作”的授权补齐 tools/upgrade_preview.py。入口验证固定官方远端、完整 commit、干净源码及实际构建包与 Git 文件一致；复用已安装版本的维护协调器和原实例稳定入口。专项测试覆盖拒绝错误身份/来源/脏源码/忽略文件注入、构建中途变更、凭据和 sent/unknown 账本保留、维护计划续接与真实子进程恢复。7 项专项通过，全套 96 项通过；真实 0.3.1 实例交付正在进行，不能用本地验证替代。
+2026-09-13 按用户“commit & push 并交付实例、全程操作”的授权补齐 tools/upgrade_preview.py。入口验证固定官方远端、完整 commit、干净源码及实际构建包与 Git 文件一致；复用已安装版本的维护协调器和原实例稳定入口。专项测试覆盖拒绝错误身份/来源/脏源码/忽略文件注入、构建中途变更、凭据和 sent/unknown 账本保留、维护计划续接与真实子进程恢复。7 项专项通过，全套 96 项通过；真实 0.3.1 → 0.3.2 实例升级和暂停 routine 恢复也已完成，证据见上方。原生恢复时 routine_plan_id 必须取维护结果的外层 plan_id，不能取 routine_id 或 binding_hash。
 
 ## 已执行的本地验证
 
@@ -49,12 +64,12 @@
 
 这些限制不是本地测试失败，也不能被本地测试替代：
 
-- Grok Bot 的完整日间自动业务路径、无过程对话的强静默和宿主长度依据。4000 unicode 是用户选定值，不是已证实的宿主限制；iPhone 两种封面发送方式均失败。
+- Grok Bot 的完整日间自动业务路径和无过程对话/推送的强静默。长度依据已经实测补齐；iPhone 两种封面发送方式均失败，当前采用文字回退。
 - TikHub 抖音当前适配、视频号不同作品类型、分页/置顶/尾页/重复游标覆盖，以及实际 RPS 例外。单条分享解析与一页列表验证不等于整体覆盖，实例适配默认 unverified。
 - 手机打开原链接效果、实际未知送达核对和宿主限流。普通试发的真实 message id/时间回执已有证据，不代表这些分支通过。
-- 缺少 Python 时在目标 Linux 自动下载环境的完整安装；本次复用已有 Python 3.12。
+- 缺少 Python 时在目标 Linux 自动下载环境的完整安装；本次目标 Bot 复用已有 Python 3.13.5。
 - 已发布的不可变轻量软件 Release 的下载、真实升级与原生 routine 恢复、成功后的 Star 邀请。当前软件 Release 尚未发布。
-- 0.3.2 的远端 CI 与 Bot 实装。0.3.1 / 0a32f70 的 [Python 3.12/3.13 CI](https://github.com/shishengkai/social-lurker/actions/runs/34714480956) 已通过，不替代本补丁 CI；已补固定 commit 的显式预览交付入口，实际升级待本轮目标实例核验；不能用重复安装切版本。
+- 0.3.2 的完整真实业务验收：安装、升级恢复、长度证据与远端 CI 已通过，但当前真实数据请求失败，不能据此宣称两平台新增关注、通知交付和自动业务均通过。
 
 历史样本用于构建脱敏回归用例，当前真实接口结果单独记录在上方；没有把旧全文版的历史测试数或单页成功当作新版完整验收。
 

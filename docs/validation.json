@@ -2,8 +2,8 @@
   "version": "0.3.2",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-12T20:44:09Z",
-  "scope": "local_0.3.2_patch_and_live_0.3.1_host_diagnostics",
+  "observed_at": "2026-09-12T22:13:16Z",
+  "scope": "local_and_live_0.3.2_preview_delivery_with_business_acceptance_blocked",
   "python": "3.12.13",
   "checks": {
     "pytest": {
@@ -23,7 +23,16 @@
     "preview_upgrade": {
       "passed": 7,
       "scope": "local_pinned_commit_bridge_and_recovery",
-      "live_instance": "pending"
+      "live_instance": "passed_0.3.1_to_0.3.2_paused_routine_restored"
+    },
+    "remote_ci": {
+      "source_commit": "881ce3a3fe388da633458c7e1af3e66b88088c0c",
+      "python": [
+        "3.12",
+        "3.13"
+      ],
+      "conclusion": "success",
+      "url": "https://github.com/shishengkai/social-lurker/actions/runs/34720040699"
     }
   },
   "live_metadata": {
@@ -41,23 +50,21 @@
     "observed_at": "2026-09-12T19:02:00Z"
   },
   "paid_api_calls": null,
-  "paid_api_calls_note": "Real API calls occurred; final successful run used 3 requests, additional diagnostics not included. Billing requires supplier records.",
+  "paid_api_calls_note": "Real requests occurred in historical and current validation, including failed and diagnostic attempts. requests_reserved is not a billing count; supplier records determine charges.",
   "software_release_published": false,
-  "git_delivered": false,
+  "git_delivered": true,
   "live_acceptance": "partial_development_evidence_only",
   "pending": [
-    "grok_0.3.2_install",
     "grok_native_routine_and_strong_silence",
-    "grok_length_evidence",
     "grok_iphone_cover_transport",
     "tikhub_douyin_and_pagination_coverage",
     "linux_missing_python_bootstrap",
     "immutable_stable_release_install_upgrade",
-    "0.3.2_remote_ci"
+    "grok_0.3.2_business_e2e_after_real_api_failures"
   ],
   "live_host": {
-    "installed_version": "0.3.1",
-    "source_commit": "0a32f70ab7830eda98ad1d33021091db1a32f662",
+    "installed_version": "0.3.2",
+    "source_commit": "881ce3a3fe388da633458c7e1af3e66b88088c0c",
     "work_message_id": "t0s26",
     "work_receipt": "sent",
     "native_images_desktop": "rendered",
@@ -76,7 +83,12 @@
       "formal_routine_id": "automation-1789242387328",
       "paused": true,
       "schedule": "07/09/11/13/15/17/19/21/23 Asia/Shanghai",
-      "foreground_fallback_removed": true
+      "foreground_fallback_removed": true,
+      "fixed_automatic_commands": [
+        "routine poll",
+        "routine next"
+      ],
+      "native_test_run_button": "disabled_for_server_routine"
     },
     "previous_invalid_probe": {
       "started_at": "2026-09-12T20:14:35Z",
@@ -100,14 +112,127 @@
       "cleanup": "paused_then_deleted_and_absent_in_ui",
       "qualifies_as_full_automatic_acceptance": false
     },
-    "message_length": "user_selected_4000_unicode_not_host_verified",
+    "message_length": {
+      "message_id": "t10s1",
+      "unicode": 2010,
+      "utf8_bytes": 2028,
+      "ascii": 2001,
+      "sha256": "e97d3aada4d49ab8bc371026169d1bc449d984becc7a331ebf754b7994f11ebd",
+      "source": "actual_sent_content_and_independent_desktop_message_copy",
+      "configured_limit": 2000,
+      "configured_unit": "utf8",
+      "basis": "measured",
+      "proves_host_maximum": false
+    },
     "current_configuration": {
       "images_verified": false,
       "native_schedule_verified": false,
       "quiet_execution_verified": false,
       "routine_active": false,
       "mode": "foreground_only",
-      "direct_readback": true
+      "direct_readback": true,
+      "message_length_verified": true
+    },
+    "preview_upgrade": {
+      "from": "0.3.1",
+      "to": "0.3.2",
+      "result": "done_upgraded",
+      "installed_hashes_verified": true,
+      "old_app_hashes_verified": true,
+      "backup_hashes_verified": true,
+      "sqlite_integrity": "ok",
+      "watches_equal_preupgrade_backup": true,
+      "updates_equal_preupgrade_backup": true,
+      "env_hash_preserved_reported_by_bot": true,
+      "env_mode": "0600",
+      "env_mtime_precedes_upgrade": true,
+      "routine_restored_paused": true
+    },
+    "business_e2e": {
+      "acceptance_success": false,
+      "wechat_share_add": [
+        "HTTP_TEMPORARY",
+        "HTTP_TEMPORARY"
+      ],
+      "douyin_share_add": [
+        "UPSTREAM_TEMPORARY",
+        "HTTP_TEMPORARY"
+      ],
+      "test_entries_created": 0,
+      "new_work_messages": 0,
+      "two_platform_attempts_reserved_before": 5,
+      "two_platform_attempts_reserved_after": 9,
+      "current_watch_poll": {
+        "elapsed_ms": 30238,
+        "envelope_ok": true,
+        "pages": 0,
+        "error": "HTTP_TEMPORARY",
+        "reserved_before": 10,
+        "reserved_after": 11
+      },
+      "request_counter_note": "Reservations include failures and one separate instrumented attempt; not a supplier billing count.",
+      "evidence": "logs/e2e-preview-0.3.2.json",
+      "extended_foreground_diagnostic": {
+        "timeout_seconds": 90,
+        "elapsed_ms": 44996,
+        "http_status": 200,
+        "parsed_video_list": false,
+        "video_count": null,
+        "raw_response_saved": false,
+        "precise_api_error_fields": "unknown",
+        "reserved_before": 11,
+        "reserved_after": 12,
+        "runtime_timeout_changed": false,
+        "proves_standard_timeout_fix": false
+      },
+      "final_requests_reserved": 12,
+      "final_work_ledger": {
+        "ignored": 14,
+        "sent": 1,
+        "queued": 0,
+        "sending": 0,
+        "unknown": 0
+      },
+      "watch_state": {
+        "active": true,
+        "coverage": "degraded",
+        "last_error_code": "HTTP_TEMPORARY"
+      },
+      "root_cause": "unresolved; standard path failed, extended diagnostic returned no usable video list"
+    },
+    "connectivity": {
+      "root_head_http_status": 200,
+      "root_head_seconds": 0.112,
+      "python_tls_seconds": 0.059,
+      "proves_data_endpoints": false
+    },
+    "iphone_mirroring": "blocked_on_physical_device_unlock",
+    "diagnostic_bytecode_incident": {
+      "derived_files": 9,
+      "symptom": "ENTRY_STATE_INVALID",
+      "resolution": "verified bytecode moved reversibly outside version directory",
+      "app_sources_changed": false,
+      "both_installed_directory_hashes_and_file_sets_reverified": true,
+      "stable_entry_reverified": true,
+      "operational_rule": "Use python -I -B for temporary diagnostics; do not bypass an entry integrity rejection."
+    },
+    "night_gate_regression": {
+      "actual_shanghai_quiet_hours": true,
+      "stable_entry": true,
+      "routine_poll": {
+        "ok": true,
+        "reason": "quiet_hours",
+        "pages": 0
+      },
+      "routine_next": {
+        "ok": false,
+        "error": "QUIET_HOURS"
+      },
+      "requests_reserved_unchanged": 12,
+      "last_automatic_slot": null,
+      "work_ledger_unchanged": true,
+      "proves_native_daytime_business": false,
+      "proves_phone_push_silence": false
     }
   }
 }
