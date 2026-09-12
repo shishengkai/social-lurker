@@ -14,6 +14,9 @@
 | notifications | 每作品完整正文、一次领取、停止周期检查、真实回执与 unknown 核对 |
 | control / operations | 14 天控制意图、历史准备/确认、停止/恢复/删除/重试/跳过 |
 | upgrade / star | 固定来源及摘要、独立版本包、维护备份/恢复；独立授权可选 Star |
+| install.py / setup | 标准库安装引导、共享依赖准备、重复安装与版本复用；推导本 Bot 配置待办及无实例值的共享 skill 入口 |
+
+0.2.0 将 agent 编排分为 social-lurker（日常）、social-lurker-setup（安装配置）、social-lurker-upgrader（升级）；共用 Star 规则置于 upgrader/references。三个 skill 使用同一个程序和当前 Bot 的五张表。原生平台注册、持久绑定、消息测试和 routine 操作由 setup skill 连续推进，本地命令仅提供真实状态和参数，不伪造平台完成记录。
 
 额外技术字段：collection_runs.plan_confirmed 用于“只清点元信息”与“允许媒体处理”的明确区分；works.asr_submitted_at/asr_reviewed_at 区分实际提交和人工核对后的等待检查。它们是执行状态，不是配置副本，不增加业务表。
 

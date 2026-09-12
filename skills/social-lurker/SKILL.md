@@ -1,11 +1,19 @@
 ---
 name: social-lurker
-description: 在当前 Grok Bot 中关注微信视频号或抖音博主，保存完整口播文案并逐作品通知；管理历史收集、停止、恢复、删除和升级。
+description: 在当前 Grok Bot 中关注微信视频号或抖音博主，保存完整口播文案并逐作品通知；管理历史收集、停止、恢复、删除，并路由安装配置与升级。
 ---
 
 # 盯梢者
 
 仅为 Grok Bot 提供。一个 Bot 一个 UUID 实例，数据根默认 `/workspace/social-lurker/`。主 skill 可共享，读取当前实例所绑定版本的本文件及配套说明，不使用其他实例的身份、配置、凭据或数据库。
+
+## 先按请求路由
+
+- 安装、配置、填写 Key、自检修复、实例未绑定：读取 [安装配置 skill](../social-lurker-setup/SKILL.md)，连续完成设置，不让用户复制安装命令。尚未安装时从源码读取该 skill。
+- 检查版本、升级、升级恢复或用户明确要求 Star：读取 [升级 skill](../social-lurker-upgrader/SKILL.md)。
+- 关注、历史、日常检查与通知：按本 skill 执行。
+
+仅在需要时读取对应管理 skill；后台 routine 只执行下方工作流程。共享 skill 中不得固化某个 Bot 的 UUID、Key 或版本。用户不需要知道 skill 名称或手工选择。
 
 ## 先识别当前实例
 
@@ -73,10 +81,6 @@ description: 在当前 Grok Bot 中关注微信视频号或抖音博主，保存
 - skip：用户明确放弃当前批次的指定阻塞作品时使用。
 - uninstall：程序停止当前实例新增工作并保留数据；待在途完成后，使用已验证的原生工具移除本 Bot 唯一 routine 和绑定。未移除前不能宣称卸载完成。其他 Bot 的入口、版本、数据不改。
 
-## 安装、升级与可选 Star
+## 用户主动任务结束
 
-安装依赖 Python 3.12+、ffmpeg/ffprobe、Node 22+。只安装已校验的本项目产物和用户可写依赖，不改系统 Python。doctor、本地文件锁、Bot 身份与消息测试通过后才能创建一个常规 routine。routine 默认每 30 分钟，settings 改频率后同步原生调度并读回成功，再记 verified_interval_minutes。
-
-用户主动任务结束后可 `upgrade check`（automatic=true），后台禁用。只在确认新版本时提醒当前/新版本与摘要。用户一次“升级”即可 `upgrade apply`（authorized=true）；不再重复确认。返回 draining 时继续原任务和校对，结束后再次 apply。维护不是 stop，不取消合法通知。遇协议不兼容、跨 Bot 影响或破坏性升级，先具体说明超出范围再决策。新版本和精确 SHA 在 upgrade-plan 中固定，不能临时追另一个版本。
-
-仅首次安装或实际升级**全部成功**后才可 `star invite`，无关工作不触发。原生安装/调度验收未完成不算成功安装。缺 gh/认证、已 Star、查询失败静默略过；不安装 gh、不登录、不索取 token。邀请展示当前 GitHub 账号和 `shishengkai/social-lurker`，每次事件最多一次。仅直接对应本邀请的“确认”或明确 Star 请求才可 `star apply`；忽略不追问。账号与选择仅留当前会话，不写 settings、数据库、日志或项目文档。执行前后程序都会重新核对账号与 Star 状态，失败不回滚安装。
+正常完成用户主动任务后，按 [升级 skill](../social-lurker-upgrader/SKILL.md) 的规则做轻量版本检查；无法确认或没有更新时安静结束。后台 routine 不进入此流程。安装和升级的成功判定及可选 Star 由各自 skill 负责。

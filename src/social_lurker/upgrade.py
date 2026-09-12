@@ -92,6 +92,13 @@ def verify_manifest(manifest, version=None):
         "skills/social-lurker/SKILL.md",
         "vendor/wechat-decrypt/decrypt.cjs",
     }
+    if semver(manifest["version"]) >= (0, 2, 0):
+        required |= {
+            "skills/social-lurker-setup/SKILL.md",
+            "skills/social-lurker-upgrader/SKILL.md",
+            "skills/social-lurker-upgrader/references/star.md",
+            "app/social_lurker/setup.py",
+        }
     require(required <= set(manifest["files"]), "RELEASE_INVALID", "发布缺少运行文件")
     return manifest
 

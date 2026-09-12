@@ -22,7 +22,18 @@ jobs:
       - name: Install media tools
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: uv sync --frozen
-      - run: uv run ruff check src tests tools
+      - run: uv run ruff check install.py src tests tools
       - run: uv run pytest -q
+      - name: Install, repeat and add a second Bot
+        run: uv run python tools/smoke_install.py
       - name: Verify lock export
         run: uv export --frozen --no-dev --no-emit-project --no-header --format requirements-txt -o /tmp/requirements-runtime.txt && diff requirements-runtime.txt /tmp/requirements-runtime.txt
+  bootstrap:
+    runs-on: ubuntu-latest
+    container: python:3.9-slim-bookworm@sha256:a02e9c5406c416c504d6c9a1a306ff4080c3173f1008d192f953bd20382a2d5c
+    steps:
+      - name: Prepare source checkout tools
+        run: apt-get update && apt-get install -y --no-install-recommends git
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Bootstrap missing Python, Node and media tools
+        run: python tools/smoke_install.py

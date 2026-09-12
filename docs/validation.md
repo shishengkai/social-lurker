@@ -1,6 +1,6 @@
 # 开发验证 · 2026-09-12
 
-当前证据来自本地未提交的开发实现，Python 3.12.13、macOS arm64。开发验证不等于 Grok Bot 产品已通过验收。[脱敏结构化结果](validation.json)不含密钥、签名媒体 URL 或全文副本。
+下方原始 51 项测试及媒体/Whisper 证据形成于提交 57d1d37 之前，环境为 Python 3.12.13、macOS arm64。该提交后来已推送且 CI 通过；0.2.0 安装改造的新增证据另见末节。开发验证不等于 Grok Bot 产品已通过验收。[脱敏结构化结果](validation.json)不含密钥、签名媒体 URL 或全文副本。
 
 ## 已验证
 
@@ -29,12 +29,21 @@
 - Grok Bot 的稳定身份、持久目录、复制隔离、原生校对、原生消息 ID/读回和长消息容量。
 - routine 持续执行、重启续跑、包括校对过程在内的主会话零痕迹和空轮不推送。
 - 正式不可变 Release 出现后的真实跨版本升级；目前仅实现并测试校验和恢复，不存在已发布版本。
-- 目标 Linux 架构与 GitHub CI（工作流已编写，尚未推送触发）。
+- Grok Bot 目标机器上的执行；历史提交 57d1d37 的 CI 已通过，本轮新增 CI 尚未推送触发。
 
-目标环境步骤见 [Grok Bot 验收](../skills/social-lurker/references/acceptance.md)。本次没有发送作品通知、创建 routine、点 Star、提交、推送或发布软件。
+目标环境步骤见 [Grok Bot 验收](../skills/social-lurker/references/acceptance.md)。未发送实际作品通知、创建 routine、点 Star 或发布正式软件。
 
 ## 可重跑验证
 
 普通 pytest 不联网、不消耗业务 API 额度。`tools/validate_live.py` 明确区分 `--media` 与 `--paid-asr`，只有显式开关才转写；运行前选定样本和费用范围。凭据用 `--credentials-file` 指向本地忽略文件。已有 ASR 提交状态应查询原 job，不要直接重跑产生新任务。
 
 相关协议来源：[TikHub 视频号分享链接](https://docs.tikhub.io/472974844e0)、[fal 队列](https://fal.ai/docs/documentation/model-apis/inference/queue)、[fal CDN](https://fal.ai/docs/documentation/model-apis/fal-cdn)、[fal 保留规则](https://fal.ai/docs/documentation/model-apis/media-expiration)。文档说明与本页实际验证范围分别看待。
+
+## 0.2.0 安装与三个 skill 改造（本地工作区）
+
+- 66 项 pytest、Ruff 和编译通过。新增覆盖源码/安装文件校验、版本冲突保护、安装锁、失败续装、独立身份与凭据、原配置保留、只提示缺失项、无实例信息的共享 skill 注册模板，以及新发布包必须包含三个 skill。
+- 在本机运行 tools/smoke_install.py：真实创建独立 venv、安装锁定 Python 依赖、初始化 0.2.0-dev、再次安装、第二 Bot 复用同一包。修改后的 settings、测试 .env 和 SQLite 原稿/全文均保留；第二个 Bot 空库且凭据为空。
+- 在只有 Python 3.9 与 Git 的 Debian bookworm 容器中，分别验证 Linux aarch64 和 x86_64 自动补齐依赖。x86_64 使用 Docker Desktop 在 ARM Mac 上仿真；容器镜像固定为 python:3.9-slim-bookworm，digest a02e9c5406c416c504d6c9a1a306ff4080c3173f1008d192f953bd20382a2d5c。
+- 两架构均由安装器准备 Python 3.12.14、Node 22.23.2、ffmpeg 7.1.1，完成首次安装/重复安装/第二 Bot 复用及数据保留测试。在仅 /usr/bin:/bin 的调用环境下，launcher 所调用程序能恢复工具路径，doctor 的本地依赖与 SQLite 检查通过。详细已解析包记录仅保留在忽略的测试目录。
+- CI 增加依赖已就绪的安装冒烟和 Python 3.9 容器中的冷启动安装；本轮工作区尚未 commit/push，新增工作流尚未在 GitHub 执行。
+- 本轮仅使用测试占位凭据，未重新调用 TikHub、Whisper 或发送原生消息。delivery.verified 保持 false。Grok Bot 对一句安装请求的实际执行、共享入口注册、持久绑定、消息/routine 回执与强静默仍待用户目标环境验证；正式 Release 的真实稳定安装和升级也尚未验收。

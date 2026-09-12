@@ -6,6 +6,7 @@
 |---|---|
 | init | binding_confirmed:true，platform_bot_id 可空；无 --instance 时按本次 request_id 生成稳定 UUID，重装应传原 UUID |
 | doctor | {}，不调用付费业务 API |
+| setup | action:status；返回缺失凭据名、原生验证待办、本 Bot 持久绑定与唯一 routine 的建议内容，不自行调用平台工具 |
 | config | action:get；set + settings 部分对象；credentials + values（仅 TIKHUB_API_KEY/FAL_KEY） |
 | accounts | action:add + source + accept_service_costs:true；list；stop/resume/delete + account_id |
 | collect | action:prepare + account_id + scope:count/count:N，或 time/amount:N/unit:hours\|days\|months\|years，或 all；已有历史需 mode:append\|replace |

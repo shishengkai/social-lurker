@@ -4,6 +4,18 @@
 
 **当前是首版开发实现，尚未通过 Grok Bot 安装、原生校对、通知及强静默验收。** 没有创建 routine、部署、发布正式 Release 或替用户点 Star。
 
+## 安装到 Grok Bot
+
+在你希望使用的 Bot 中发送一句话：
+
+> 请安装并配置盯梢者：https://github.com/shishengkai/social-lurker
+
+Bot 会读取 [安装配置 skill](skills/social-lurker-setup/SKILL.md)，准备环境、绑定当前 Bot、引导填写 TikHub 和 fal.ai Key，并验证通知和定时任务。用户只需提供实际缺失的信息；默认每 30 分钟检查，由当前 Bot 自己的 LLM 校对，不需要额外 LLM Key。
+
+**给执行安装的 Bot：当前安装通道为 `preview`，版本为 `0.2.0-dev`。** 使用固定到精确 commit 的干净源码快照，按 setup skill 调用根目录 `install.py --channel preview`。当前没有正式 Release；这是明确的试用通道，不能称 stable。正式发布后入口改用 stable。完整命令和验证规则由 skill 负责，不要求用户复制工程说明。
+
+同一 Bot 再次安装会继续原配置，新增 Bot 复用程序并建立独立数据库和 .env。重复安装不自动升级已有实例。原生安装、通知和静默能力仍须在 Grok Bot 中取得真实证据。
+
 - 每个 Bot 独立 SQLite、settings.json 与 .env；跨 Bot 不合并资料或去重。
 - 原稿和完整校对稿长期存 SQLite，每条新作品一条完整通知；历史批次只有结束汇总。
 - 不增加 Web server、阅读文件或额外 LLM API。超长单条消息阻塞并保留全文，不自动摘要/截断/拆分。
@@ -26,14 +38,22 @@ uv run python tools/dev.py --help
 开发安装（只用于验证，根目录可自行选择；不会自动绑定真实 Bot 或创建 routine）：
 
 ```sh
-uv run python tools/install_dev.py --root /tmp/social-lurker-demo --binding-confirmed
+uv run python tools/install_dev.py --root /tmp/social-lurker-demo --instance <固定的实例UUID>
 ```
 
 命令返回 instance_id 与 launcher。按 [JSON 协议](skills/social-lurker/references/protocol.md) 使用结构化 stdin 调用，先配置当前实例 `.env` 再 doctor。`.env.example` 无真实值。配置不从工作目录或宿主环境推断，不跨 Bot 改写 os.environ。
 
 ## Grok Bot
 
-安装入口为 [social-lurker skill](skills/social-lurker/SKILL.md)，验证步骤见 [目标环境验收](skills/social-lurker/references/acceptance.md)。默认 delivery.verified=false，真实消息能力验证后才能正式领取通知。程序提供确定性校对与发送交接，不假设存在未经验证的 Grok Bot HTTP API。
+用户入口由三个 skill 配合完成：
+
+| Skill | 职责 |
+| --- | --- |
+| [social-lurker](skills/social-lurker/SKILL.md) | 日常盯梢、全文处理与通知，以及请求路由 |
+| [social-lurker-setup](skills/social-lurker-setup/SKILL.md) | 安装、绑定、配置和恢复未完成的设置 |
+| [social-lurker-upgrader](skills/social-lurker-upgrader/SKILL.md) | 稳定版本检查、升级与恢复 |
+
+Star 为安装/升级成功后的共用可选步骤，用户独立授权；不增加单独 skill。验证步骤见 [目标环境验收](skills/social-lurker/references/acceptance.md)。默认 delivery.verified=false，真实消息能力验证后才能正式领取通知。
 
 本地布局：
 
@@ -42,6 +62,7 @@ uv run python tools/install_dev.py --root /tmp/social-lurker-demo --binding-conf
   runtime/launcher.py
   runtime/releases/<version>/{app,skills,vendor,.venv,manifest.json}
   runtime/locks/
+  runtime/tools/                 # 自动准备或记录的依赖环境
   bots/<instance_id>/
     settings.json
     .env
@@ -52,6 +73,8 @@ uv run python tools/install_dev.py --root /tmp/social-lurker-demo --binding-conf
 ```
 
 源码职责及恢复边界见 [实现说明](docs/implementation.md)，实测结果见 [验证记录](docs/validation.md)。
+
+安装器的前提、恢复边界及依赖来源见 [安装实现](docs/installation.md)。
 
 ## 升级与发布
 

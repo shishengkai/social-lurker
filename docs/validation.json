@@ -73,5 +73,29 @@
     },
     "empty_tick": "no notifications",
     "native_delivery_verified": false
+  },
+  "installation_0_2_0": {
+    "observed_at": "2026-09-12T14:35:15+08:00",
+    "code_state": "local uncommitted changes after 57d1d37",
+    "tests_passed": 66,
+    "ruff": "passed",
+    "skill_count": 3,
+    "local_smoke": "passed",
+    "cold_bootstrap": {
+      "base": "Debian bookworm / Python 3.9 / Git",
+      "linux_aarch64": "passed",
+      "linux_x86_64": "passed under Docker Desktop emulation on ARM Mac",
+      "python": "3.12.14",
+      "node": "22.23.2",
+      "ffmpeg": "7.1.1"
+    },
+    "repeat_preserves_settings_credentials_and_text": true,
+    "second_bot_reuses_package_with_empty_database_and_credentials": true,
+    "minimal_path_doctor": "passed",
+    "grok_acceptance_pending": true,
+    "native_registration_or_routine_created": false,
+    "paid_api_calls": 0,
+    "new_ci_executed_on_github": false,
+    "formal_release_install_or_upgrade_verified": false
   }
 }

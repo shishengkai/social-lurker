@@ -147,12 +147,19 @@ class Instance:
         self.db_path = safe_path(self.path, "lurker.sqlite3")
         self.maintenance = safe_path(self.path, "maintenance")
 
-    def initialize(self, *, binding_confirmed=False, platform_bot_id=None, runtime_version=__version__):
+    def initialize(self, *, binding_confirmed=False, platform_bot_id=None, runtime_version=None):
         require(
             binding_confirmed is True, "INSTANCE_BINDING_REQUIRED", "先明确当前 Bot 绑定；复制 Bot 须新实例"
         )
         if self.settings_path.exists():
             return self.load(platform_bot_id=platform_bot_id)
+        if runtime_version is None:
+            package_manifest = Path(__file__).resolve().parents[2] / "manifest.json"
+            runtime_version = __version__
+            if package_manifest.is_file():
+                installed = json.loads(package_manifest.read_text())
+                require(installed.get("project") == "social-lurker", "CONFIG_INVALID", "安装清单项目不匹配")
+                runtime_version = installed["version"]
         for folder in ("work", "logs", "maintenance"):
             safe_path(self.path, folder).mkdir(parents=True, exist_ok=True, mode=0o700)
         settings = copy.deepcopy(DEFAULTS)

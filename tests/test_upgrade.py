@@ -16,6 +16,10 @@ FILES = {
     "app/social_lurker/schema.sql": b"schema",
     "requirements-runtime.txt": b"lock",
     "skills/social-lurker/SKILL.md": b"skill",
+    "skills/social-lurker-setup/SKILL.md": b"setup skill",
+    "skills/social-lurker-upgrader/SKILL.md": b"upgrader skill",
+    "skills/social-lurker-upgrader/references/star.md": b"shared star instructions",
+    "app/social_lurker/setup.py": b"setup",
     "vendor/wechat-decrypt/decrypt.cjs": b"decrypt",
     "launcher.py": b"launcher",
 }
@@ -87,6 +91,15 @@ def test_manifest_fixed_authority_schema_and_launcher():
             verify_manifest(manifest() | patch)
     assert is_newer("0.1.0", "0.1.0-dev")
     assert not is_newer("0.1.0", "0.1.0")
+
+
+def test_new_release_requires_all_three_skills():
+    for name in ("social-lurker-setup", "social-lurker-upgrader"):
+        incomplete = manifest()
+        incomplete["files"].pop(f"skills/{name}/SKILL.md")
+        with pytest.raises(LurkerError) as error:
+            verify_manifest(incomplete)
+        assert error.value.code == "RELEASE_INVALID"
 
 
 def test_invalid_highest_release_never_falls_back():

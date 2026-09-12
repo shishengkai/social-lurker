@@ -51,6 +51,11 @@ def dispatch(instance, store, settings, command, request):
         )
         result["local_ready"] = all(v for k, v in result["checks"].items() if k != "delivery_verified")
         return result
+    if command == "setup":
+        from .setup import status
+
+        require(action == "status", "INVALID_REQUEST", "setup 支持 action:status")
+        return status(instance, settings, store)
     if command == "status":
         return store.summary()
     if command == "config":
@@ -314,6 +319,7 @@ def main(argv=None):
         choices=[
             "init",
             "doctor",
+            "setup",
             "config",
             "accounts",
             "collect",
@@ -348,6 +354,9 @@ def main(argv=None):
         if args.command == "init" and not instance_id:
             instance_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "social-lurker:" + request_id))
         instance = Instance(args.root, instance_id)
+        from .setup import configure_tool_path
+
+        configure_tool_path(instance.root)
         if args.command == "init":
             with file_lock(instance.maintenance / "instance.lock"):
                 settings = instance.initialize(
@@ -359,7 +368,7 @@ def main(argv=None):
             require(instance.db_path.exists(), "INSTANCE_NOT_INITIALIZED", "该实例尚未初始化")
             store = Store(instance.db_path)
         control = args.command == "accounts" and payload.get("action") in ("stop", "delete")
-        read_only = args.command in ("doctor", "status") or (
+        read_only = args.command in ("doctor", "status", "setup") or (
             args.command == "accounts" and payload.get("action") == "list"
         )
         if control:
