@@ -35,5 +35,9 @@ jobs:
       - name: Prepare source checkout tools
         run: apt-get update && apt-get install -y --no-install-recommends git
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Trust this runner checkout inside the container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git rev-parse HEAD
       - name: Bootstrap missing Python, Node and media tools
         run: python tools/smoke_install.py
