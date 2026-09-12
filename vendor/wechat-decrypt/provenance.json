@@ -1,0 +1,10 @@
+{
+  "upstream": "https://github.com/Evil0ctal/WeChat-Channels-Video-File-Decryption",
+  "commit": "799a131834ccc6ac69d1fbfa8c30350c4f718ccb",
+  "license": "MIT",
+  "files": {
+    "LICENSE": "4712314c88162127c946f66ff3f07008db44c0fa468451fadab2d3b896b391a1",
+    "wasm_video_decode.wasm": "dca796bacec37d8522c7983b3945e5d579bd74164e3b21f0ebc773be6dfc8b6e",
+    "wasm_video_decode.js": "78faf7621959e30ba05c0acf7182dd14bcbd7dfe45529476649f39b20e5dbea3"
+  }
+}

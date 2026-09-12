@@ -1,0 +1,77 @@
+{
+  "observed_at": "2026-09-11T22:45:03.627531+00:00",
+  "code_state": "local uncommitted development implementation",
+  "automated_tests": {
+    "passed": 51,
+    "ruff": "passed",
+    "environment": "macOS arm64 / Python 3.12.13"
+  },
+  "wechat": {
+    "work_id": "14991940714846493129",
+    "source_bytes": 60660900,
+    "audio_bytes": 164487,
+    "audio_duration_ms": 54612,
+    "decrypt_and_full_decode": "passed",
+    "accessible_metadata_count": 134,
+    "tail": {
+      "items": 0,
+      "has_more": false,
+      "has_cursor": true
+    },
+    "source_link": {
+      "detail_identity_matches": true,
+      "author_matches": true,
+      "share_url_obtained": true
+    }
+  },
+  "douyin": {
+    "work_id": "7684230783506189604",
+    "source_bytes": 61824227,
+    "audio_bytes": 2360831,
+    "audio_duration_ms": 786740,
+    "full_decode": "passed",
+    "pagination": "bounded pages only; all-history not tested"
+  },
+  "whisper": {
+    "model": "fal-ai/whisper",
+    "input_duration_ms": 54612,
+    "paid_submission_limit": 1,
+    "requested_input_retention_seconds": 172800,
+    "actual_expiry_verified": false,
+    "native_proofreading": "not_tested",
+    "upload": "succeeded",
+    "submission": "acknowledged",
+    "result": "completed",
+    "characters": 291,
+    "text_sha256": "d6bfab6e49e57ecad41be1706f8a5050020b7e3942e0c6aaed4c45c518f4166e",
+    "database_integrity": "ok",
+    "pending_native_proofreading": true
+  },
+  "not_verified": [
+    "Grok Bot identity and persistent storage",
+    "Grok Bot native proofreading",
+    "Native notification and receipt; long-message limits",
+    "Routine scheduling and zero execution traces",
+    "Actual fal input expiry after 48 hours",
+    "Live stable release upgrade",
+    "GitHub CI and target Linux runtime"
+  ],
+  "external_delivery": "none",
+  "installation": {
+    "launcher_dispatch": "passed",
+    "credential_configuration": "passed",
+    "doctor_checks": {
+      "python": true,
+      "ffmpeg": true,
+      "ffprobe": true,
+      "node": true,
+      "mp3_encoder": true,
+      "decrypt_assets": true,
+      "credentials": true,
+      "database": true,
+      "delivery_verified": false
+    },
+    "empty_tick": "no notifications",
+    "native_delivery_verified": false
+  }
+}
