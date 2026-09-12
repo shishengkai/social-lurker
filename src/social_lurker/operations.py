@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
-from .config import message_limit, validate
+from .config import LENGTH_BASES, message_limit, validate
 from .errors import LurkerError, require
 from .releases import AUTHORITY, package_bytes, prepare, verify_directory
 from .schedule import context, next_slot
@@ -98,7 +98,7 @@ def activation_missing(settings, watches):
     if not host["routine_id"]:
         missing.append("HOST_ROUTINE_REQUIRED")
     try:
-        message_limit(settings)
+        message_limit(settings, require_verified=True)
     except LurkerError as error:
         missing.append(error.code)
     for watch in watches:
@@ -130,6 +130,8 @@ def check(instance):
     if not routine["synchronized"]:
         missing.append("HOST_ROUTINE_UNSYNCED")
     host = (settings["host"]["evidence_ref"] or {}).get("host", {})
+    basis = host.get("length_basis")
+    basis = basis if isinstance(basis, str) else None
     return {
         "instance_id": settings["instance_id"],
         "version": settings["app_version"],
@@ -138,6 +140,18 @@ def check(instance):
         "test_ready": not test_missing,
         "test_missing": test_missing,
         "images_verified": host.get("images_verified") is True,
+        "message_length": {
+            "limit": host.get("max_message_length"),
+            "unit": host.get("length_unit"),
+            "basis": basis,
+            "verified": basis in {"provider_documentation", "measured"}
+            and "HOST_LENGTH_UNVERIFIED" not in test_missing,
+            "scope": "foreground_only"
+            if basis == "user_selected"
+            else "verified"
+            if "HOST_LENGTH_UNVERIFIED" not in test_missing
+            else "unverified",
+        },
         "source_capabilities": {
             k: TikHub(None).capability(settings, *k.split(":"))
             for k in ("douyin:normal", "douyin:lite", "wechat_channels:default")
@@ -186,6 +200,8 @@ def routine_plan(instance):
         "notifications_per_activation": settings["limits"]["notifications_per_activation"],
         "entry": str(instance.path("run.py")),
         "instance": str(instance.root),
+        "poll_command": ["routine", "poll"],
+        "dispatch_command": ["routine", "next"],
     }
 
 
@@ -218,6 +234,7 @@ def bind(instance, data):
                 "max_message_length",
                 "length_unit",
                 "length_evidence",
+                "length_basis",
                 "delivery_update_id",
                 "image_update_id",
                 "image_evidence",
@@ -246,10 +263,15 @@ def bind(instance, data):
             for key in ("length_evidence", "image_evidence"):
                 if key in h:
                     require(isinstance(h[key], str) and 0 < len(h[key].strip()) <= 2048, "EVIDENCE_INVALID")
-            if any(k in h for k in ("max_message_length", "length_unit", "length_evidence")):
+            length_fields = ("max_message_length", "length_unit", "length_evidence", "length_basis")
+            if any(k in h for k in length_fields):
                 require(
-                    all(k in h for k in ("max_message_length", "length_unit", "length_evidence")),
+                    all(k in h for k in length_fields),
                     "LENGTH_PROOF_REQUIRED",
+                )
+                require(
+                    isinstance(h["length_basis"], str) and h["length_basis"] in LENGTH_BASES,
+                    "EVIDENCE_INVALID",
                 )
             if h.get("images_verified"):
                 row = db.execute(

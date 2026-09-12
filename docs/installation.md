@@ -12,7 +12,7 @@
 python3 install.py --instance /已验证持久目录/social-lurker/当前实例 --bot-id 真实BotID --allow-working-tree
 ```
 
-未传 `--allow-working-tree` 时选择固定官方仓库最高不可变稳定 Release。当前源码中存在 0.3.1 并不代表该 Release 已发布。安装器不会代替用户创建 Git tag 或发布软件。
+未传 `--allow-working-tree` 时选择固定官方仓库最高不可变稳定 Release。当前源码中存在 0.3.2 并不代表该 Release 已发布。安装器不会代替用户创建 Git tag 或发布软件。
 
 创建新实例先原子落下配置、空凭据文件和三表数据库，再通过临时版本包原子进入 app/version。相同实例重复安装保留配置与凭据并核验版本文件；不能以重新安装越过维护计划或切换软件版本。未知数据库、非空未知目录、不同 Bot ID、符号链接路径均拒绝覆盖。macOS 上 `/tmp`、`/var` 等别名应先由调用方解析为实际绝对目录；不能绕过程序的符号链接拒绝策略。
 
@@ -20,15 +20,25 @@ python3 install.py --instance /已验证持久目录/social-lurker/当前实例 
 
 `setup check` 只检查本地事实，不发送测试消息，不创建 routine。未取得证据时 mode=foreground_only。`setup bind` 可登记真实宿主结果引用：
 
-- host：持久目录、实例隔离、原生调度、强静默、单条图文、长度单位/上限。长度必须同时提供独立 length_evidence，不能用一次短消息成功推断任意上限；setup check 的 test_ready/test_missing 在获取作品前指出缺项。
+- host：持久目录、实例隔离、原生调度、强静默、单条图文、长度单位/上限。长度必须同时提供 max_message_length、length_unit、length_basis、length_evidence。basis 为 provider_documentation、measured 或 user_selected；最后一种只供前台试用，不算宿主长度证明。不能用一次短消息成功推断任意上限；setup check 的 test_ready/test_missing 和 message_length 在获取作品前指出缺项、依据与适用范围。
 - delivery_update_id：显式试发且已经登记实际 sent 回执的作品；只有满足这一事实程序才记录 delivery_verified_at。
-- images：首次明确图文试发使用 `dispatch next` 的 foreground_test:true、test_images:true、update_id，不提前标记图片能力。真实 sent 且已检查实际显示后，用 image_update_id、image_evidence 登记 images_verified:true；纯文字回执不能作为图片证据。
+- images：首次明确图文试发使用 `dispatch next` 的 foreground_test:true、test_images:true、update_id，不提前标记图片能力。真实 sent 且已在用户阅读端检查显示后，用 image_update_id、image_evidence 登记 images_verified:true；纯文字回执或仅桌面显示不能证明 iPhone 可用。2026-09-13 iPhone 实测原生 images 为不可预览文件、Markdown 仅为替代文字，因此当前登记 false，后续常规通知用文字，不重发旧作品。
 - routine：`routine plan` 的 requested_active 表示关注需求，active 是验收门禁后的启停目标，observed_active 是最近登记的实际状态。创建暂停任务后绑定真实 ID；按当前 binding_hash 登记原生查询结果。即使关注活跃，也允许如实登记暂停；能力未齐备不能登记已启用。synchronized=false 时继续同步，不把计划值冒充实际状态。
 - sources：平台/渠道、适配版本、覆盖等级及真实样本引用。近期页验证不是全量覆盖承诺。
 
 证据只写入 settings.host.evidence_ref，不增加新的状态文件。时区/日程变更会使旧原生调度验证失效，需重新同步。程序阻止未核验宿主后台运行和未核验平台自动数据请求。测试 fixture 不能用于绕过真实验证。
 
-0.3.0 实例升级后，旧的无依据长度值需要补充 length_evidence；平台适配版本更新为 metadata-r1.2，原适配证据需重新核对。已经 sent/unknown 的作品不会因模板修改而重发；图文验收选尚未发送的作品。保留库与凭据，通过受控版本升级应用补丁，不覆盖原版本目录或删除数据库来绕过校验。
+0.3.2 要求重新分类旧版本的长度记录；缺少 length_basis 时不能自动当成宿主实证。用户此前选择的 4000 unicode 可完整登记为 user_selected，后续有文档或长度实测再更新整组依据。平台适配版本为 metadata-r1.2，旧适配证据需重新核对。已经 sent/unknown 的作品不会因模板修改而重发；图文验收选尚未发送的作品。
+
+`upgrade apply` 仍只接受正式不可变 Release。用户明确要求交付开发补丁时，使用仓库中的 `tools/upgrade_preview.py`：先从固定官方仓库取得干净 checkout，切到本次授权的完整 40 位 commit，再由当前实例的 Python 执行下面的命令。脚本检查远端、HEAD、工作区与包文件是否和该 commit 一致，调用实例已安装版本的维护协调器，经过排空、备份、候选核验、提交点和稳定入口恢复；不覆盖旧版本代码，不用重复安装切版本。
+
+```sh
+<当前实例Python> -B <固定commit源码>/tools/upgrade_preview.py --instance <当前实例绝对目录> --bot-id <真实BotID> --commit <完整40位commit> --confirm-preview
+```
+
+这是显式开发预览交付，不代表发布了稳定 Release，自动升级检查不会自动选择 main。包沿用既有清单格式，不能把其中 channel 字段当作 GitHub 正式发布证明；脚本结果明确标注 development_preview 和精确目标 commit。
+
+返回 routine_restore 时，查询本实例原生任务并按最新 routine plan 同步，使用 setup bind 登记真实启停、binding_hash 和当前 routine_plan_id，再用稳定入口 maintenance resume。新版本长度证据缺少类型或其他能力未验收时，恢复目标保持暂停。存在 maintenance.json 时不得再跑预览升级或改选目标，只从原实例 run.py 继续维护恢复。升级过程不写 .env、不清关注/发送记录，不自动启用尚未验收的后台。
 
 ## 密钥和运行
 
@@ -37,10 +47,18 @@ python3 install.py --instance /已验证持久目录/social-lurker/当前实例 
 每条调用使用安装器返回的 Python 绝对路径、实例 run.py 以及 --instance。参数通过 stdin JSON，必须 protocol=1，结果也为单个 JSON envelope。示例：
 
 ```json
-{"protocol":1,"automatic":true}
+{"protocol":1}
 ```
 
-将它传给 `poll`。后台随后最多领取 settings.limits.notifications_per_activation 个 `dispatch next`（也传 automatic:true），每个许可只调用一次实际宿主发送工具，再提交可信 `dispatch report`。无通知与可操作故障时不要向用户输出执行过程。宿主不支持这一行为时明确维持前台模式。
+0.3.2 将它传给 `routine poll`。后台随后最多领取 settings.limits.notifications_per_activation 个 `routine next`，二者固定 automatic 模式，拒绝传入降级参数。每个许可只调用一次实际宿主发送工具，再提交可信 `dispatch report`。任何门禁或夜间限制失败都停止，不换前台命令。0.3.1 仍用 poll / dispatch next 且必须 automatic:true；先核对安装版本，不能指示旧实例调用不存在的命令。无通知与可操作故障时不要向用户输出执行过程；宿主不支持时维持前台模式。
+
+## 不调用业务的宿主探针
+
+0.3.2 的 `routine probe` 接收 `{"protocol":1,"probe_id":"本次唯一标识"}`，只读本实例并返回时间与标识，不调 TikHub、不领通知、不写 settings 或数据库。bound_routine_id 只是实例已绑定的正式任务，不代表本次真实触发任务；真实触发 ID 需从宿主核对。它的输出不是静默或调度验收证明，必须对照实际原生运行历史、工具执行和消息记录；前台执行一次也不证明原生唤醒。
+
+真实工具支持一次性测试才使用该入口；当前 Grok Bot 未提供此动作。只能用 cron 时，按已授权的验收创建独立日期限定临时任务，设置唯一标识、有限有效时间窗和重复运行保护；正式任务保持暂停。运行完成或超时后停用并删除临时任务，查询确认。日期 cron 本身每年重复，不能当作一次性机制，也不能留下每天执行的核验任务。旧 0.3.1 可在同一边界下用标准库只写一次标记，但不能声称已经运行新版 probe 命令。
+
+原生唤醒、无过程对话/通知、正确日间日程和实际业务路径分别取证。自写 silent:true 或无作品发送不证明强静默；能力标记只能按已观察事实登记。
 
 ## 开发和真实验收
 

@@ -160,6 +160,7 @@ def test_length_preflight_precedes_any_test_api_call(instance, watch, monkeypatc
                 "max_message_length": 4000,
                 "length_unit": "unicode",
                 "length_evidence": "fixture-length-doc",
+                "length_basis": "provider_documentation",
             },
         },
     )

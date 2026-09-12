@@ -1,13 +1,13 @@
 {
-  "version": "0.3.1",
+  "version": "0.3.2",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-12T19:02:00Z",
-  "scope": "local_patch_and_bounded_live_metadata",
+  "observed_at": "2026-09-12T20:44:09Z",
+  "scope": "local_0.3.2_patch_and_live_0.3.1_host_diagnostics",
   "python": "3.12.13",
   "checks": {
     "pytest": {
-      "passed": 82,
+      "passed": 96,
       "failed": 0
     },
     "ruff": "passed",
@@ -19,6 +19,11 @@
       "repeat_preserved_credentials": true,
       "real_api_calls": 0,
       "host_messages": 0
+    },
+    "preview_upgrade": {
+      "passed": 7,
+      "scope": "local_pinned_commit_bridge_and_recovery",
+      "live_instance": "pending"
     }
   },
   "live_metadata": {
@@ -31,21 +36,78 @@
     "additional_development_requests": true,
     "cover_http_status": 200,
     "cover_content_type": "image/jpg",
-    "media_body_saved": false
+    "media_body_saved": false,
+    "version": "0.3.1",
+    "observed_at": "2026-09-12T19:02:00Z"
   },
   "paid_api_calls": null,
   "paid_api_calls_note": "Real API calls occurred; final successful run used 3 requests, additional diagnostics not included. Billing requires supplier records.",
-  "host_messages": 0,
   "software_release_published": false,
   "git_delivered": false,
   "live_acceptance": "partial_development_evidence_only",
   "pending": [
-    "grok_patch_install_and_rendered_card",
+    "grok_0.3.2_install",
     "grok_native_routine_and_strong_silence",
     "grok_length_evidence",
+    "grok_iphone_cover_transport",
     "tikhub_douyin_and_pagination_coverage",
     "linux_missing_python_bootstrap",
     "immutable_stable_release_install_upgrade",
-    "patch_remote_ci"
-  ]
+    "0.3.2_remote_ci"
+  ],
+  "live_host": {
+    "installed_version": "0.3.1",
+    "source_commit": "0a32f70ab7830eda98ad1d33021091db1a32f662",
+    "work_message_id": "t0s26",
+    "work_receipt": "sent",
+    "native_images_desktop": "rendered",
+    "native_images_iphone": "unpreviewable_file_stodownload",
+    "markdown_probe_message_id": "t6s0",
+    "markdown_images_desktop": "rendered",
+    "markdown_images_iphone": "alt_text_only",
+    "rendering_evidence": "user_provided_iphone_screenshots_and_desktop_ui",
+    "cover_head": {
+      "status": 200,
+      "content_type": "image/jpg",
+      "content_disposition": null,
+      "media_body_saved": false
+    },
+    "routine_correction": {
+      "formal_routine_id": "automation-1789242387328",
+      "paused": true,
+      "schedule": "07/09/11/13/15/17/19/21/23 Asia/Shanghai",
+      "foreground_fallback_removed": true
+    },
+    "previous_invalid_probe": {
+      "started_at": "2026-09-12T20:14:35Z",
+      "ended_at": "2026-09-12T20:14:54Z",
+      "automatic_path": "quiet_hours",
+      "foreground_pages": 1,
+      "qualifies_as_automatic_acceptance": false
+    },
+    "pure_native_probe": {
+      "routine_id": "sl-wake-20260913-0433",
+      "scheduled_at": "2026-09-12T20:33:00Z",
+      "marker_written_at": "2026-09-12T20:42:46.911736Z",
+      "native_history": "succeeded",
+      "desktop_automatic_messages_observed": 0,
+      "phone_notification_silence": "pending",
+      "requests_reserved_before": 5,
+      "requests_reserved_after": 5,
+      "sent_before": 1,
+      "sent_after": 1,
+      "last_automatic_slot": null,
+      "cleanup": "paused_then_deleted_and_absent_in_ui",
+      "qualifies_as_full_automatic_acceptance": false
+    },
+    "message_length": "user_selected_4000_unicode_not_host_verified",
+    "current_configuration": {
+      "images_verified": false,
+      "native_schedule_verified": false,
+      "quiet_execution_verified": false,
+      "routine_active": false,
+      "mode": "foreground_only",
+      "direct_readback": true
+    }
+  }
 }

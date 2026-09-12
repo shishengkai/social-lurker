@@ -1,6 +1,6 @@
 # 轻量 R1 实现
 
-代码版本 0.3.1，数据库 schema 1，application_id 1397509425。规范来源为 social-lurker-brain 的 Releases/03_轻量系统设计。此实现是新产品基线，不兼容旧全文版数据库和 CLI。
+代码版本 0.3.2，数据库 schema 1，application_id 1397509425。规范来源为 social-lurker-brain 的 Releases/03_轻量系统设计。此实现是新产品基线，不兼容旧全文版数据库和 CLI。
 
 ## 模块与边界
 
@@ -26,9 +26,13 @@ SQLite 使用 DELETE journal、外键与 5 秒 busy timeout，只允许 runtime�
 
 消息正文为粗体标题、作者/平台、当地时间和“打开原作品”链接；标题显示 120 字，原链接不截断，北京时间不显示内部时区标识。图片使用列表返回的公开 HTTPS 地址。视频号仅对 wxapp.tc.qq.com 允许组合列表附带的图片资源签名；不会附加视频令牌、API key、Cookie，不增加独立 token 字段、不下载图片、不为封面额外请求数据接口。这类图片链接会过期，不能当作永久文件地址。
 
-常规发送只使用已验证的图文能力；显式 test_images 仅允许针对指定的 reason=test 作品发一次未验证图文，不改变能力状态。完成真实 sent 并提供显示证据后才能登记 images_verified。长度必须有独立 length_evidence，test-latest 在数据请求前预检。整个结构化载荷按核验的长度单位保守计数，超限 blocked，不拆分、不生成摘要。发送必须使用许可原文；unknown 不重试，可信 not_sent 才可重新排队，暂停后真实 sent 仍登记。
+常规发送只使用已验证的图文能力；显式 test_images 仅允许针对指定的 reason=test 作品发一次未验证图文，不改变能力状态。完成真实 sent 并提供用户阅读端显示证据后才能登记 images_verified。当前 iPhone 图片两种发送方式均未通过，按既有规则使用纯文字。
+
+长度配置同时保存上限、单位、length_basis 与独立 length_evidence。basis 明确区分 provider_documentation、measured、user_selected；用户选择只能用于前台，不能启用后台。旧无类型的记录不自动信任，绑定时整组更新。test-latest 在数据请求前预检。整个结构化载荷按登记的单位保守计数，超限 blocked，不拆分、不生成摘要。发送必须使用许可原文；unknown 不重试，可信 not_sent 才可重新排队，暂停后真实 sent 仍登记。
 
 routine plan 区分关注需求、门禁后的目标和已观察状态。可以登记“有活跃关注但原生任务暂停”；缺少能力证据不能登记后台启用。实际状态与当前计划摘要不匹配时，setup check 继续报告前台模式。维护恢复也使用当前能力门禁，不因升级自动开放未验收的后台。
+
+原生任务使用 `routine poll` 和 `routine next`，程序固定 automatic=True，CLI 不接受降级参数。手动命令仍为用户前台请求保留；这减少遗漏参数，不构成能够阻止宿主任意执行其他命令的安全隔离。两个 skill 同时禁止自动失败后切换手动。`routine probe` 仅在短读事务中返回时间、实例与核验标识，不调用网络、发送或写入能力证据；静默与原生调度仍须目标宿主观察。
 
 ## 平台证据
 
@@ -39,6 +43,8 @@ routine plan 区分关注需求、门禁后的目标和已观察状态。可以�
 ## 升级恢复
 
 maintenance.json 是唯一维护计划。prepared 排空在途请求和发送；frozen 后拒绝普通写入并允许专用回执收件箱。备份位于现有 backups，清单核验完整性；候选由目标版本自检后才能切换。
+
+显式开发补丁通过仓库侧 tools/upgrade_preview.py 交付。该工具要求固定官方远端、干净完整 SHA checkout，逐文件核对打包结果与 Git 对象，然后在隔离 Python 子进程中调用实例已安装的 Lifecycle.begin。原版本负责提交前阶段，稳定 run.py 负责切到已提交目标并继续恢复；脚本不写配置、凭据或业务库，也不修改已安装旧版本。它不放宽正常 upgrade apply 的正式 Release 要求，不自动选择浮动开发分支；未完成维护仍只由原实例恢复入口继续。
 
 数据库和 settings 是两个独立文件：先持久记录 switching，再依次替换。中断处于 switching 默认恢复旧组合；持久 committed 后永不恢复旧快照。所选版本重放回执时先提交 DB 再标记收件箱，重放幂等。最后一批回执与 business_writes_open 在同一短锁内衔接，避免遗漏迟到结果。原生 routine 恢复失败保留开放写入，使用最新关注快照及绑定摘要核对宿主证明，完成后才归档计划。
 

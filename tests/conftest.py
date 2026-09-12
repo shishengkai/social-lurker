@@ -50,6 +50,7 @@ def instance(tmp_path, clock):
             "max_message_length": 4000,
             "length_unit": "unicode",
             "length_evidence": "fixture-length-contract",
+            "length_basis": "provider_documentation",
             "durable_directory": True,
             "instance_isolated": True,
             "native_schedule_verified": True,

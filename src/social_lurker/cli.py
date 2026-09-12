@@ -29,6 +29,9 @@ def validate_input(command, p):
         ("config", "validate"): (set(), set()),
         ("config", "set"): (set(), {"timezone", "monitor", "rate_limit", "limits"}),
         ("routine", "plan"): (set(), set()),
+        ("routine", "poll"): (set(), set()),
+        ("routine", "next"): (set(), set()),
+        ("routine", "probe"): ({"probe_id"}, set()),
         ("status",): (set(), set()),
         ("watch", "list"): (set(), set()),
         ("watch", "add"): (set(), {"source", "platform", "author_id", "channel_id"}),
@@ -76,7 +79,7 @@ def validate_input(command, p):
     ):
         if key in p:
             require(type(p[key]) is bool, "INPUT_INVALID")
-    for key in ("watch_id", "update_id", "hold_id", "bot_id", "routine_id"):
+    for key in ("watch_id", "update_id", "hold_id", "bot_id", "routine_id", "probe_id"):
         if key in p:
             require(isinstance(p[key], str) and 0 < len(p[key]) <= 512, "INPUT_INVALID")
     for key in ("since", "until"):
@@ -115,6 +118,23 @@ def execute(instance, command, data):
         return configure(instance, p)
     if command == ("routine", "plan"):
         return routine_plan(instance)
+    if command == ("routine", "poll"):
+        return monitor.poll(automatic=True)
+    if command == ("routine", "next"):
+        return Delivery(instance).next(automatic=True)
+    if command == ("routine", "probe"):
+        # Native wake verification never invokes business work or certifies silence itself.
+        with instance.transaction("read") as (_, settings):
+            return {
+                "kind": "host_wake_probe",
+                "probe_id": p["probe_id"],
+                "instance_id": settings["instance_id"],
+                "bound_routine_id": settings["host"]["routine_id"],
+                "observed_at": int(instance.clock()),
+                "version": settings["app_version"],
+                "data_requests": 0,
+                "messages_sent": 0,
+            }
     if command == ("status",):
         return instance_status(instance)
     if command == ("watch", "list"):
