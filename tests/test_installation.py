@@ -79,6 +79,21 @@ def test_stable_bot_identity_and_missing_binding():
     assert error.value.code == "INSTANCE_BINDING_REQUIRED"
 
 
+def test_install_failure_identifies_step_without_command_input_or_raw_logs(monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a[0], -9, "private stdout", "private stderr"),
+    )
+    with pytest.raises(bootstrap.InstallError) as error:
+        bootstrap.child(["tool", "private argument"], input="private stdin", step="准备运行依赖")
+    assert error.value.code == "INSTALL_STEP_FAILED"
+    assert "准备运行依赖" in error.value.message and "-9" in error.value.message
+    assert "private" not in error.value.message
+
+
 def test_legacy_package_without_manifest_inventory_is_preserved(tmp_path):
     (tmp_path / "old-data").write_text("retain")
     with pytest.raises(bootstrap.InstallError) as error:

@@ -35,7 +35,7 @@ def require(condition, code, message):
         raise InstallError(code, message)
 
 
-def child(args, *, cwd=None, env=None, input=None, timeout=900, error_json=False):
+def child(args, *, cwd=None, env=None, input=None, timeout=900, error_json=False, step="安装子进程"):
     try:
         result = subprocess.run(
             [str(a) for a in args],
@@ -47,14 +47,18 @@ def child(args, *, cwd=None, env=None, input=None, timeout=900, error_json=False
             timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired):
-        raise InstallError("INSTALL_STEP_FAILED", "安装步骤未完成，可用同一实例重试") from None
+        raise InstallError("INSTALL_STEP_FAILED", f"{step}未完成，可用同一实例重试") from None
     if result.returncode and error_json:
         # Only our own worker is allowed to return a public structured error.
         try:
             public_error(json.loads(result.stdout))
         except (ValueError, TypeError, KeyError):
             pass
-    require(result.returncode == 0, "INSTALL_STEP_FAILED", "安装步骤失败；保留原有实例，请检查依赖和网络")
+    require(
+        result.returncode == 0,
+        "INSTALL_STEP_FAILED",
+        f"{step}失败（退出码 {result.returncode}）；保留原有实例，请检查依赖和网络",
+    )
     return result.stdout
 
 
@@ -227,6 +231,7 @@ def environment(root, *, system_only=False):
             "pip",
         ],
         timeout=1800,
+        step="准备 Python、Node 和 ffmpeg 依赖",
     )
     result = probe(prefix / "bin/python", str(prefix / "bin") + os.pathsep + search_path)
     require(result is not None, "DEPENDENCIES_MISSING", "依赖安装后自检未通过，可重试恢复")
@@ -242,7 +247,7 @@ def environment(root, *, system_only=False):
 
 
 def source_contents(source, allow_working_tree=False):
-    sha = child(["git", "rev-parse", "HEAD"], cwd=source, timeout=15).strip()
+    sha = child(["git", "rev-parse", "HEAD"], cwd=source, timeout=15, step="核验源码提交").strip()
     require(re.fullmatch(r"[a-f0-9]{40}", sha), "SOURCE_INVALID", "需使用已固定的源码提交")
     dirty = bool(child(["git", "status", "--porcelain"], cwd=source, timeout=15).strip())
     require(
@@ -283,7 +288,7 @@ def source_contents(source, allow_working_tree=False):
 
 
 def make_venv(python, target, requirements):
-    child([python, "-m", "venv", target], timeout=120)
+    child([python, "-m", "venv", target], timeout=120, step="创建应用 Python 环境")
     child(
         [
             target / "bin/python",
@@ -295,7 +300,8 @@ def make_venv(python, target, requirements):
             "--only-binary=:all:",
             "-r",
             requirements,
-        ]
+        ],
+        step="安装锁定的 Python 应用依赖",
     )
 
 
