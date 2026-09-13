@@ -2,8 +2,8 @@
   "version": "0.3.6",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-13T11:36:00Z",
-  "scope": "local_0.3.6_recovered_incident_fix_live_upgrade_pending",
+  "observed_at": "2026-09-13T11:43:09.798079+00:00",
+  "scope": "delivered_0.3.6_stale_incident_fixed_formal_poll_passed_post_fix_silence_pending",
   "python": "3.12.13",
   "checks": {
     "pytest": {
@@ -23,11 +23,19 @@
     "preview_upgrade": {
       "passed": 7,
       "scope": "local_pinned_commit_bridge_and_recovery",
-      "live_instance": "passed_through_0.3.5_paused_routine_preserved"
+      "live_instance": "passed_through_0.3.6_active_routine_restored"
     },
     "remote_ci": {
+      "source_commit": "d27be2c6d3f19dbd27d222d3947e7c2113ee3551",
+      "python": [
+        "3.12",
+        "3.13"
+      ],
+      "conclusion": "success",
+      "url": "https://github.com/shishengkai/social-lurker/actions/runs/34754915081",
       "version": "0.3.6",
-      "conclusion": "pending"
+      "installed_runtime_files_identical_to_ci_commit": true,
+      "first_attempt_failure": "uv.lock version drift caused SOURCE_DIRTY at build; tests passed"
     },
     "remote_ci_0_3_5_history": {
       "source_commit": "8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3",
@@ -386,8 +394,8 @@
     "historical_snapshot_version": "0.3.2"
   },
   "live_host": {
-    "installed_version": "0.3.5",
-    "source_commit": "8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3",
+    "installed_version": "0.3.6",
+    "source_commit": "0834a3ba4975e270add15cdbd939cc8d7bab6599",
     "native_schedule_verified": true,
     "pure_probe_silence_verified": true,
     "business_round_silence_verified": false,
@@ -407,10 +415,13 @@
       "sent": 3
     },
     "request_count_day": "2026-09-13",
-    "requests_reserved": 27,
-    "last_automatic_slot": null,
+    "requests_reserved": 31,
+    "last_automatic_slot": 1789297200,
     "first_formal_business_slot": "2026-09-13T19:00:00+08:00",
-    "followup_scheduled_at": "2026-09-13T19:20:00+08:00"
+    "followup_scheduled_at": "2026-09-13T19:20:00+08:00",
+    "formal_business_poll_verified": true,
+    "followup_status": "paused_after_1900_review",
+    "next_normal_slot": "2026-09-13T21:00:00+08:00"
   },
   "live_new_shares_20260913": {
     "version": "0.3.4",
@@ -620,7 +631,26 @@
   "incident_recovery_0_3_6": {
     "regressions_passed": 11,
     "adapter_version": "metadata-r1.4",
-    "deployment": "pending",
-    "additional_data_calls": 0
+    "deployment": "independently_verified",
+    "additional_data_calls": 0,
+    "backup": "4aedafb8-7402-40da-b510-53a411ea0679",
+    "package_versions_verified": [
+      "0.3.1",
+      "0.3.2",
+      "0.3.3",
+      "0.3.4",
+      "0.3.5",
+      "0.3.6"
+    ],
+    "backup_hashes_verified": true,
+    "current_and_backup_integrity": "ok",
+    "watches_updates_incidents_equal_to_backup": true,
+    "credentials_digest_unchanged": "reported_by_deployment_log",
+    "maintenance_present": false,
+    "extra_work_or_incident_sends": 0,
+    "setup_mode": "automatic_ready",
+    "routine_native_enabled_readback": true,
+    "evidence": "logs/acceptance-upgrade-0.3.6.json",
+    "post_fix_native_business_silence": "pending"
   }
 }
