@@ -1,5 +1,25 @@
 # 轻量 R1 验证记录
 
+当前：0.3.5 / [8ed3403](https://github.com/shishengkai/social-lurker/commit/8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3) 已推送、交付并独立核验，120 项本地测试、检查、安装冒烟及 [Python 3.12/3.13 CI](https://github.com/shishengkai/social-lurker/actions/runs/34747233313) 通过。合作作品过滤已在小Lin说实际列表验证；视频号再次返回间歇性接口错误。0.3.4 已在本次新分享上走通两平台前台通知；手机系统推送、消息内链接和完整自动流程仍待验收。
+
+## 新分享、真实通知与合作作品规则
+
+新的抖音 Lt6u8n9FNLo 与视频号 AnkzHamJ5q，分别解析为“燕三嘤嘤嘤”“布鱼AI”。首次列表尝试分别返回 UPSTREAM_TEMPORARY、WECHAT_LIST_UNAVAILABLE；各平台停止后，有界诊断返回有效的 20 条、15 条列表，作者身份均匹配。随后实际稳定入口各首次 poll 一页成功、test-latest 及必要字段补全成功。这证明本次前台流程可用，不代表上游间歇故障已消失。
+
+两条文字通知在桌面实际可见：t35s0“乌克兰内斗”（16:03:43）、t35s1“一个Skill做出访谈金句长图”（16:04:05）。直接读取 SQLite 核对两个消息 ID 均为 sent，47 ignored、3 sent，queued/sending/unknown=0，requests_reserved=24，last_automatic_slot=null。0.3.4 安装包和 SQLite 完整性再次通过。第一条回执曾因字段名错误被拒绝，修正同一 attempt 的登记后成功，没有重新发送；0.3.5 skill 补充回执字段与修正方式。消息 UI 时间与账本记录的 sent_at 分别保留，不把登记时间当作精确的 UI 发出时间。
+
+已提前请用户准备手机，并将 Mac 聊天移到后台做本轮推送对照；手机横幅/通知中心与消息内链接结果仍待用户反馈，不能由桌面消息推定。此前 iPhone 封面失败结论继续成立；本轮均为文字。正式任务继续暂停。
+
+“小Lin说”22 条列表中只有 20 条的主要作者匹配；另外 2 条具有合作信息，合作名单均明确包含小Lin说，已直接只读核对原始结构。用户确认**只通知本人发布，跳过别人主发的合作作品**。0.3.5 仅过滤这种已确认关系，未知外来作者和根身份冲突仍拒绝；跳过项不入库、不通知，含跳过项的页不能据过滤后的剩余集合触发续页。仅剩合作项时记录本策略的有效边界，不伪造平台末尾。正常列表与接口恢复验证复用同一解析规则。12 项新增回归覆盖这些边界及试发选择。
+
+实例日志为 logs/acceptance-new-shares-20260913.json、logs/acceptance-list-diagnostics-20260913.json、logs/acceptance-prepared-20260913.json、logs/acceptance-delivery-20260913.json。原始响应只留在该实例私有诊断目录（0600），不复制到公开仓库。
+
+16:19，0.3.5 交付完成。小Lin说实际 poll pages=1、excluded_collaborations=2，登记 douyin:normal / metadata-r1.4 / recent_pages_verified；布鱼AI pages=0 / WECHAT_LIST_UNAVAILABLE，停止且未重试，视频号保留旧 r1.3 证据，在当前适配器下仍未验证。两条已 sent 的前台 dispatch next 均返回 null，没有调用发送工具。计数 24→26，67 ignored、3 sent。
+
+独立验证 app/0.3.1–0.3.5 全部文件集合及摘要，当前 SHA 为 8ed3403；备份 97de03f5-f5df-41a7-b28a-66a0996d5c84 的摘要、当前和备份 SQLite 完整性通过，备份中的全部既有 updates 在当前库逐行保持相同。t0s26、t35s0、t35s1 均保留，maintenance.json 不存在，last_automatic_slot=null。升级前后 watches/updates 相等及凭据摘要不变由交付日志报告；poll 后作者扫描状态变化是正常业务写入。quiet/native/images/routine_active 均仍 false。原日程和完整指令保留由 Bot 查询报告，实际界面继续显示正式任务暂停。证据为 logs/acceptance-upgrade-0.3.5.json。
+
+## 前一阶段交付基线
+
 2026-09-13，0.3.3 / [f600198](https://github.com/shishengkai/social-lurker/commit/f600198fbfa16ac6dd123f3573d6a0f368a04155) 已交付并独立核验安装包与数据库完整性。0.3.4 / [5acc688](https://github.com/shishengkai/social-lurker/commit/5acc68834ed7c0d911a1e7209f003555875a0602) 已推送，**108 项 pytest、ruff/格式、编译和安装冒烟通过**，[Python 3.12/3.13 GitHub CI](https://github.com/shishengkai/social-lurker/actions/runs/34744693599) 成功。0.3.4 已完成原实例升级并独立验证安装包、备份及数据库完整性。升级后一次真实列表检查成功；完整业务验收仍未通过。
 
 ## 0.3.3–0.3.4 修复与白天续验

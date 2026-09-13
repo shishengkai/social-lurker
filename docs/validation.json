@@ -1,13 +1,13 @@
 {
-  "version": "0.3.4",
+  "version": "0.3.5",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-13T07:26:00Z",
-  "scope": "local_and_delivered_0.3.4_with_partial_live_acceptance",
+  "observed_at": "2026-09-13T08:21:00Z",
+  "scope": "delivered_0.3.5_collaboration_fix_with_partial_live_acceptance",
   "python": "3.12.13",
   "checks": {
     "pytest": {
-      "passed": 108,
+      "passed": 120,
       "failed": 0
     },
     "ruff": "passed",
@@ -23,17 +23,17 @@
     "preview_upgrade": {
       "passed": 7,
       "scope": "local_pinned_commit_bridge_and_recovery",
-      "live_instance": "passed_through_0.3.4_paused_routine_preserved"
+      "live_instance": "passed_through_0.3.5_paused_routine_preserved"
     },
     "remote_ci": {
-      "source_commit": "5acc68834ed7c0d911a1e7209f003555875a0602",
+      "source_commit": "8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3",
       "python": [
         "3.12",
         "3.13"
       ],
       "conclusion": "success",
-      "url": "https://github.com/shishengkai/social-lurker/actions/runs/34744693599",
-      "version": "0.3.4"
+      "url": "https://github.com/shishengkai/social-lurker/actions/runs/34747233313",
+      "version": "0.3.5"
     }
   },
   "live_metadata": {
@@ -58,10 +58,10 @@
   "pending": [
     "grok_native_routine_and_strong_silence",
     "grok_iphone_cover_transport",
-    "tikhub_douyin_and_pagination_coverage",
     "linux_missing_python_bootstrap",
     "immutable_stable_release_install_upgrade",
-    "grok_current_business_e2e_after_real_api_failures"
+    "tikhub_pagination_and_more_work_types",
+    "grok_current_native_business_after_foreground_delivery"
   ],
   "live_daytime_20260913": {
     "installed_version": "0.3.4",
@@ -397,5 +397,91 @@
     "request_count_day": "2026-09-13",
     "requests_reserved": 8,
     "last_automatic_slot": null
+  },
+  "live_new_shares_20260913": {
+    "version": "0.3.4",
+    "adapter_version": "metadata-r1.3",
+    "sources": [
+      {
+        "platform": "douyin",
+        "share": "https://v.douyin.com/Lt6u8n9FNLo/",
+        "author": "燕三嘤嘤嘤",
+        "first_error": "UPSTREAM_TEMPORARY",
+        "successful_initial_poll_pages": 1,
+        "diagnostic_items": 20
+      },
+      {
+        "platform": "wechat_channels",
+        "share": "https://weixin.qq.com/sph/AnkzHamJ5q",
+        "author": "布鱼AI",
+        "first_error": "WECHAT_LIST_UNAVAILABLE",
+        "successful_initial_poll_pages": 1,
+        "diagnostic_items": 15
+      }
+    ],
+    "requests_reserved_before": 11,
+    "requests_reserved_after": 24,
+    "provider_intermittency_resolved": false,
+    "notifications": [
+      {
+        "author": "燕三嘤嘤嘤",
+        "provider_message_id": "t35s0",
+        "ui_time": "2026-09-13T16:03:43+08:00",
+        "ledger_sent_at": 1789286640,
+        "state": "sent",
+        "first_report_field_names_corrected": true
+      },
+      {
+        "author": "布鱼AI",
+        "provider_message_id": "t35s1",
+        "ui_time": "2026-09-13T16:04:05+08:00",
+        "ledger_sent_at": 1789286656,
+        "state": "sent"
+      }
+    ],
+    "ui_and_database_independently_checked": true,
+    "sqlite_integrity": "ok",
+    "ledger_counts": {
+      "ignored": 47,
+      "sent": 3
+    },
+    "queued_sending_unknown": 0,
+    "iphone_push": "awaiting_user_observation",
+    "iphone_message_links": "awaiting_user_observation",
+    "routine_active": false
+  },
+  "collaboration_fix_0_3_5": {
+    "source_commit": "8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3",
+    "adapter_version": "metadata-r1.4",
+    "sample_items": 22,
+    "primary_author_matches": 20,
+    "verified_collaborations": 2,
+    "membership_independently_checked": true,
+    "user_rule": "only_primary_author_posts",
+    "unknown_identity_rejected": true,
+    "excluded_page_continuation": false,
+    "new_regression_cases": 12,
+    "deployment": "passed",
+    "installed_package_and_backup_independently_verified": true,
+    "prior_updates_preserved": true,
+    "current_and_backup_sqlite_integrity": "ok",
+    "maintenance_present": false,
+    "poll_pages": 1,
+    "excluded_collaborations": 2,
+    "source_level": "recent_pages_verified",
+    "wechat_poll_error": "WECHAT_LIST_UNAVAILABLE",
+    "wechat_current_adapter_verified": false,
+    "already_sent_dispatch_results": [
+      null,
+      null
+    ],
+    "ledger_counts": {
+      "ignored": 67,
+      "sent": 3
+    },
+    "requests_reserved": 26,
+    "last_automatic_slot": null,
+    "routine_active": false,
+    "log": "logs/acceptance-upgrade-0.3.5.json"
   }
 }
