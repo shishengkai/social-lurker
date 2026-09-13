@@ -113,6 +113,22 @@ def douyin_detail(data):
     raise LurkerError("DOUYIN_DETAIL_UNAVAILABLE", message, next_action="provide_public_share_link")
 
 
+def check_wechat_list_error(data):
+    """A provider error inside a 200 envelope is neither an empty page nor an identity conflict."""
+    require(isinstance(data, dict), "RESPONSE_INVALID")
+    if (
+        isinstance(data.get("message"), str)
+        and data["message"]
+        and not data.get("username")
+        and not isinstance(data.get("videos"), list)
+    ):
+        raise LurkerError(
+            "WECHAT_LIST_UNAVAILABLE",
+            "视频号接口返回错误提示，未提供作者及作品列表；请核对作者参数与接口状态",
+            next_action="verify_author_and_endpoint",
+        )
+
+
 def cover(value):
     if isinstance(value, str):
         return public_cover_url(value)
@@ -327,6 +343,7 @@ class TikHub:
             raw = data.get("max_cursor")
             cursor_out = platform_id(raw) if more and raw is not None else None
         else:
+            check_wechat_list_error(data)
             require(
                 data.get("username") == aid and isinstance(data.get("videos"), list), "PAGE_IDENTITY_INVALID"
             )
@@ -434,6 +451,7 @@ def validate_probe(endpoint, data, params):
         if data["has_more"]:
             platform_id(data.get("max_cursor"))
     elif suffix == "fetch_user_videos":
+        check_wechat_list_error(data)
         require(
             data.get("username") == params["username"] and isinstance(data.get("videos"), list),
             "RESPONSE_INVALID",
