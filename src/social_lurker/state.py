@@ -41,10 +41,41 @@ def add_hold(db, endpoint, reason, now):
     incident(db, reason, endpoint, now)
 
 
+def resolve_watch_incidents(db, watch_id, recovered_at):
+    """A completed author scan resolves its faults, never API holds or send outcomes."""
+    rows = array(db.execute("SELECT incidents_json FROM runtime").fetchone()[0])
+    changed = False
+    for item in rows:
+        if item.get("resolved_at") is not None or item["key"] != digest(item["code"] + ":" + watch_id):
+            continue
+        if item["created_at"] > recovered_at:
+            continue
+        item["resolved_at"] = recovered_at
+        if item["state"] == "pending":
+            item["state"] = "resolved"
+        changed = True
+    if changed:
+        db.execute("UPDATE runtime SET incidents_json=?", (canonical(rows),))
+
+
+def reconcile_watch_incidents(db):
+    """Reconcile older packages' pending faults using persisted successful scans."""
+    rows = array(db.execute("SELECT incidents_json FROM runtime").fetchone()[0])
+    for watch in db.execute("SELECT id,last_success_at FROM watches WHERE error_code IS NULL"):
+        recovered_at = watch["last_success_at"]
+        if recovered_at is not None and any(
+            item.get("resolved_at") is None
+            and item["created_at"] < recovered_at
+            and item["key"] == digest(item["code"] + ":" + watch["id"])
+            for item in rows
+        ):
+            resolve_watch_incidents(db, watch["id"], recovered_at)
+
+
 def incident(db, code, subject, now):
     rows = array(db.execute("SELECT incidents_json FROM runtime").fetchone()[0])
     key = digest(code + ":" + subject)
-    current = next((r for r in rows if r["key"] == key), None)
+    current = next((r for r in reversed(rows) if r["key"] == key and r.get("resolved_at") is None), None)
     if current and current["state"] in {"sending", "unknown"}:
         return
     if current and current.get("last_sent_at") is not None and now - current["last_sent_at"] < 86400:
@@ -56,17 +87,16 @@ def incident(db, code, subject, now):
             (
                 r
                 for r in rows
-                if r["state"] == "sent"
-                and r.get("last_sent_at") is not None
-                and now - r["last_sent_at"] >= 86400
+                if r["state"] in {"resolved", "sent"}
+                and r.get("resolved_at") is not None
+                and now - r["resolved_at"] >= 86400
+                and (r.get("last_sent_at") is None or now - r["last_sent_at"] >= 86400)
             ),
             None,
         )
         if removable is None:
             return
         rows.remove(removable)
-    if current in rows:
-        rows.remove(current)
     rows.append(
         dict(
             id=ident(),
@@ -80,6 +110,7 @@ def incident(db, code, subject, now):
             payload_hash=None,
             send_started_at=None,
             provider_message_id=None,
+            resolved_at=None,
         )
     )
     db.execute("UPDATE runtime SET incidents_json=?,updated_at=?", (canonical(rows), now))

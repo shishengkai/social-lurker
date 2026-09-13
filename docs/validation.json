@@ -1,13 +1,13 @@
 {
-  "version": "0.3.5",
+  "version": "0.3.6",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-13T09:24:00Z",
-  "scope": "delivered_0.3.5_native_probe_silence_verified_formal_routine_enabled_business_pending",
+  "observed_at": "2026-09-13T11:36:00Z",
+  "scope": "local_0.3.6_recovered_incident_fix_live_upgrade_pending",
   "python": "3.12.13",
   "checks": {
     "pytest": {
-      "passed": 120,
+      "passed": 131,
       "failed": 0
     },
     "ruff": "passed",
@@ -26,6 +26,10 @@
       "live_instance": "passed_through_0.3.5_paused_routine_preserved"
     },
     "remote_ci": {
+      "version": "0.3.6",
+      "conclusion": "pending"
+    },
+    "remote_ci_0_3_5_history": {
       "source_commit": "8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3",
       "python": [
         "3.12",
@@ -61,7 +65,7 @@
     "immutable_stable_release_install_upgrade",
     "tikhub_pagination_and_more_work_types",
     "grok_current_native_business_after_foreground_delivery",
-    "grok_formal_business_round_and_no_update_silence"
+    "grok_formal_no_update_silence_after_incident_recovery_fix"
   ],
   "live_daytime_20260913": {
     "installed_version": "0.3.4",
@@ -586,5 +590,37 @@
       "logs/acceptance-native-probes-20260913.json",
       "logs/acceptance-post-probe-20260913.json"
     ]
+  },
+  "automatic_business_1900": {
+    "version": "0.3.5",
+    "slot": 1789297200,
+    "pages": 4,
+    "errors": [],
+    "watches_succeeded": 4,
+    "requests_reserved_before": 27,
+    "requests_reserved_after": 31,
+    "updates_counts": {
+      "ignored": 67,
+      "sent": 3
+    },
+    "api_holds": [],
+    "new_works": 0,
+    "work_resends": 0,
+    "stale_incident": {
+      "id": "2d6fbefc-aa8f-4ab6-8507-68e98ba67a2e",
+      "code": "PAGE_IDENTITY_INVALID",
+      "subject": "AI创变工坊",
+      "created_at": 1789282268,
+      "last_sent_at": 1789297668,
+      "provider_message_id": "t43s2"
+    },
+    "no_update_silence": "failed_stale_incident",
+    "evidence": "logs/acceptance-automatic-business-20260913.json and independent SQLite/UI readback"
+  },
+  "incident_recovery_0_3_6": {
+    "regressions_passed": 11,
+    "adapter_version": "metadata-r1.4",
+    "deployment": "pending",
+    "additional_data_calls": 0
   }
 }

@@ -2,7 +2,7 @@
 
 from .errors import LurkerError, require
 from .schedule import context, next_slot
-from .state import add_gap, incident
+from .state import add_gap, incident, resolve_watch_incidents
 from .util import canonical, clean_text, digest, ident, parse_json, platform_id, public_cover_url, public_url
 
 PLATFORMS = {"douyin", "wechat_channels"}
@@ -361,6 +361,7 @@ class Store:
                     "UPDATE watches SET scan_state_json=NULL,last_scan_upper=?,last_success_at=?,coverage_state=?,failure_count=0,error_code=NULL,error_since=NULL,updated_at=? WHERE id=?",
                     (scan["upper"], now, coverage, now, watch_id),
                 )
+                resolve_watch_incidents(db, watch_id, now)
             return continues
 
     def failure(self, watch_id, generation, error):

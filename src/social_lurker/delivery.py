@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from .config import automatic_gate, message_limit
 from .errors import LurkerError, require
 from .schedule import allowed
-from .state import array, incident
+from .state import array, incident, reconcile_watch_incidents
 from .store import source_url
 from .util import atomic_json, canonical, clean_text, digest, ident, lock, public_cover_url
 
@@ -172,6 +172,7 @@ class Delivery:
                 )
             if foreground_test:
                 return None
+            reconcile_watch_incidents(db)
             notices = array(db.execute("SELECT incidents_json FROM runtime").fetchone()[0])
             item = next((n for n in notices if n["state"] == "pending"), None)
             if item:
@@ -219,7 +220,7 @@ class Delivery:
                 "RECEIPT_CONFLICT",
             )
             return {"state": "sent", "duplicate": True}
-        if row["state"] in {"queued", "cancelled", "pending"}:
+        if row["state"] in {"queued", "cancelled", "pending", "resolved"}:
             require(result == "not_sent", "RECEIPT_CONFLICT")
             return {"state": row["state"], "duplicate": True}
         require(row["state"] in {"sending", "unknown"}, "RECEIPT_CONFLICT")
@@ -231,7 +232,7 @@ class Delivery:
         elif result == "unknown":
             values = {"state": "unknown"}
         elif receipt["kind"] == "incident":
-            values = {"state": "pending"}
+            values = {"state": "resolved" if row.get("resolved_at") is not None else "pending"}
         else:
             watch = db.execute("SELECT * FROM watches WHERE id=?", (row["watch_id"],)).fetchone()
             same = watch and watch["status"] == "active" and watch["generation"] == row["eligible_generation"]

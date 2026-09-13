@@ -22,13 +22,13 @@ settings.host.evidence_ref 保存有版本的证据引用对象（schema:1），
 - host 的 durable_directory、instance_isolated、native_schedule_verified、quiet_execution_verified 是已验证事实；不是期待值。登记长度时必须一起提供 max_message_length、length_unit（unicode/utf8/utf16）、length_basis 和独立 length_evidence。length_basis 只能为 provider_documentation（宿主文档）、measured（实际长度测试）或 user_selected（用户选定的操作上限）。不能从普通短消息发送成功猜测任意上限，不能任填 10000。用户选择 4000 等值可登记 user_selected 供前台试用，但不能据此启用后台；后台需要前两类依据。此步在获取试发作品前完成；setup check 的 test_missing 和 message_length 会显示缺项、依据与适用范围。0.3.1 及以前无 length_basis 的旧记录需要重新分类，不自动升级为可信依据，也不能只改单个标签来重用旧证明。
 - images_verified=true 必须同时提供 image_update_id（已 sent 且 payload 确有图片的试发作品）及 image_evidence（该消息在用户实际阅读端显示封面的证据）。首次试发使用日常入口的 test_images:true，不能先谎报图文已验证再测试。桌面显示正常不证明手机可用；2026-09-13 的 iPhone 实测中，原生 images 显示不可预览文件，Markdown 图片只显示替代文字。此类失败登记 images_verified=false，后续常规通知使用文字；不得改写已发或 unknown 的作品重新试发，也不自动连续发送兼容性试验。
 - 若需证明发信能力，请用户明确要求“试发最近一条”，使用日常入口，收到实际回执后传 host.delivery_update_id。程序必须核对该试发项已 sent，才记录 delivery_verified_at。
-- sources 键只支持 douyin:normal、douyin:lite、wechat_channels:default；每项含 adapter_version（当前 metadata-r1.3）、level 与 evidence。level 可为 unverified、recent_pages_verified、enumeration_verified、range_verified。分页内容、身份、边界必须有真实接口样本证据；本地 fixture 不可作为线上验证。没有范围/枚举证明，不能说全部作品都已覆盖。版本变化重新验证。
+- sources 键只支持 douyin:normal、douyin:lite、wechat_channels:default；每项含 adapter_version（读取当前执行包的 sources.ADAPTER_VERSION，不硬编码示例版本）、level 与 evidence。level 可为 unverified、recent_pages_verified、enumeration_verified、range_verified。分页内容、身份、边界必须有真实接口样本证据；本地 fixture 不可作为线上验证。没有范围/枚举证明，不能说全部作品都已覆盖。版本变化重新验证。
 - 先用原生查询发现/创建本实例专属且暂停的 routine，绑定工具返回的真实 routine_id，不能把自拟名称当 ID。再取 routine plan：requested_active 是关注需求，active 是能力门禁后的目标，observed_active 是已登记实际状态。存在活跃关注但尚未验收时，active=false 是正常结果。原生操作之后必须再次查询，登记真实 routine_active、当前 binding_hash 及 evidence；宿主仍暂停就填 false，不能照抄期望值填 true。只有 prerequisites 齐备且原生实际启用后，setup check 才能返回 automatic_ready。维护恢复还传当前 routine_plan_id；用户期间暂停/修改关注时重新取计划。
 - 按 setup check 给出能力边界：程序安装不等于背景强静默/稳定图文/真实回执已通过。缺关键宿主能力时保留前台模式。
 
 ### 独立核验原生唤醒和静默
 
-业务门禁尚未通过时，先做不涉及业务的宿主核验，不能去掉 automatic 或改用前台扫描“证明”后台可用。0.3.2 的 `routine probe` 接收 `{"protocol":1,"probe_id":"本次唯一标识"}`，只读本实例并返回时间与标识，不调接口、不领通知、不写能力证据，也不自行宣称 silent/verified。结果仅供内部核对，不能发给用户作为例行完成消息。
+业务门禁尚未通过时，先做不涉及业务的宿主核验，不能去掉 automatic 或改用前台扫描“证明”后台可用。0.3.2 的 `routine probe` 接收 `{"protocol":1,"probe_id":"本次唯一标识"}`，只读本实例并返回时间与标识，不调接口、不领通知、不写能力证据，也不自行宣称 silent/verified。调用须使用实际 Python 的 -I -B、实例 run.py 绝对路径及 --instance 绝对路径，再追加 routine probe；核对进程退出码和 JSON envelope.ok，原生任务界面成功不代表命令成功。结果仅供内部核对，不能发给用户作为例行完成消息。
 
 先读取宿主真实工具能力。支持一次性原生试跑才使用该能力；当前 Grok Bot 所见工具没有 run_now/test 动作，不能编造。只能用 cron 时，在用户授权的验收中创建独立临时日期限定任务，要求唯一标识、有限执行时间窗、重复触发无操作；正式业务 routine 保持暂停。完成或超时后暂停并删除临时任务，查询确认，不能遗留每天运行的测试任务。不能把 cron 的日期限制说成原生一次性能力。
 

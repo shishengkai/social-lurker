@@ -10,12 +10,14 @@ import pytest
 from conftest import ingest, publication
 from test_delivery import receipt
 
+from social_lurker import __version__
 from social_lurker.delivery import Delivery
 from social_lurker.errors import LurkerError
 from social_lurker.operations import install
 from social_lurker.util import atomic_json
 
 ROOT = Path(__file__).resolve().parents[1]
+NEXT_VERSION = __version__.rsplit(".", 1)[0] + "." + str(int(__version__.rsplit(".", 1)[1]) + 1)
 spec = importlib.util.spec_from_file_location("preview", ROOT / "tools/upgrade_preview.py")
 preview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(preview)
@@ -35,7 +37,7 @@ def target(tmp_path):
     shutil.copyfile(ROOT / "tools/launcher.py", repo / "tools/launcher.py")
     shutil.copyfile(ROOT / "LICENSE", repo / "LICENSE")
     init = repo / "src/social_lurker/__init__.py"
-    init.write_text(init.read_text().replace('"0.3.5"', '"0.3.6"'))
+    init.write_text(init.read_text().replace(__version__, NEXT_VERSION))
     (repo / ".gitignore").write_text("ignored.py\n")
     git(repo, "init", "-q")
     git(repo, "remote", "add", "origin", "https://github.com/shishengkai/social-lurker.git")
@@ -114,7 +116,9 @@ def test_preview_upgrade_preserves_credentials_receipts_and_reenters_installed_c
     settings = instance.load()
     settings["host"]["evidence_ref"]["host"].update(native_schedule_verified=False, routine_active=False)
     atomic_json(instance.path("settings.json"), settings)
-    old_files = {str(p): p.read_bytes() for p in instance.path("app/0.3.5").rglob("*") if p.is_file()}
+    old_files = {
+        str(p): p.read_bytes() for p in instance.path(f"app/{__version__}").rglob("*") if p.is_file()
+    }
     old_env, old_updates = instance.path(".env").read_bytes(), updates(instance)
     repo, commit = target
     with pytest.raises(LurkerError, match="INSTANCE_MISMATCH"):
@@ -123,7 +127,7 @@ def test_preview_upgrade_preserves_credentials_receipts_and_reenters_installed_c
     assert result["ok"] and result["delivery_channel"] == "development_preview"
     assert result["target_commit"] == commit and not result["stable_release_published"]
     assert result["result"]["routine_restore"]["active"] is False
-    assert instance.load()["app_version"] == "0.3.6"
+    assert instance.load()["app_version"] == NEXT_VERSION
     with pytest.raises(LurkerError, match="MAINTENANCE_ACTIVE"):
         preview.upgrade(repo, instance.root, commit=commit, bot_id="fixture-bot", confirmed=True)
     plan = instance.plan()
@@ -162,4 +166,4 @@ def test_source_changed_during_build_is_not_installed(instance, target, monkeypa
     with pytest.raises(LurkerError, match="PREVIEW_COMMIT_MISMATCH"):
         preview.upgrade(repo, instance.root, commit=commit, bot_id="fixture-bot", confirmed=True)
     assert instance.plan() is None and instance.path("settings.json").read_bytes() == original
-    assert not instance.path("app/0.3.6").exists()
+    assert not instance.path(f"app/{NEXT_VERSION}").exists()
