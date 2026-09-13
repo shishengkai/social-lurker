@@ -2,7 +2,7 @@
   "version": "0.3.5",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-13T08:21:00Z",
+  "observed_at": "2026-09-13T08:36:00Z",
   "scope": "delivered_0.3.5_collaboration_fix_with_partial_live_acceptance",
   "python": "3.12.13",
   "checks": {
@@ -446,8 +446,14 @@
       "sent": 3
     },
     "queued_sending_unknown": 0,
-    "iphone_push": "awaiting_user_observation",
-    "iphone_message_links": "awaiting_user_observation",
+    "iphone_push": {
+      "wechat_work": "received_in_notification_center_user_confirmed",
+      "douyin_work": "not_found_in_notification_center",
+      "upgrade_completion": "received_in_notification_center_user_confirmed",
+      "channel_has_positive_control": true,
+      "all_work_pushes_confirmed": false
+    },
+    "iphone_message_links": "both_correct_works_user_confirmed",
     "routine_active": false
   },
   "collaboration_fix_0_3_5": {
@@ -483,5 +489,16 @@
     "last_automatic_slot": null,
     "routine_active": false,
     "log": "logs/acceptance-upgrade-0.3.5.json"
+  },
+  "native_probe_1635": {
+    "probe_id": "sl-quiet-20260913-1635",
+    "scheduled_at": "2026-09-13T16:35:00+08:00",
+    "created_paused": true,
+    "enabled": false,
+    "reason_not_enabled": "phone_readiness_not_confirmed_before_schedule",
+    "cancelled_and_deleted": true,
+    "formal_routine_paused": true,
+    "proves_silence": false,
+    "log": "logs/cancelled-probe-sl-quiet-20260913-1635.json"
   }
 }
