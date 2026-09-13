@@ -1,8 +1,8 @@
 # 轻量 R1 验证记录
 
-2026-09-13，0.3.3 / [f600198](https://github.com/shishengkai/social-lurker/commit/f600198fbfa16ac6dd123f3573d6a0f368a04155) 已推送，**105 项 pytest、ruff/格式与编译检查通过**，[Python 3.12/3.13 GitHub CI](https://github.com/shishengkai/social-lurker/actions/runs/34743357547) 成功。Bot 报告已完成 0.3.2 → 0.3.3 原地升级；当前待独立复核这次交付与新的视频号错误，完整业务验收尚未通过。下文将各版本和真实设备证据分别记录。
+2026-09-13，0.3.3 / [f600198](https://github.com/shishengkai/social-lurker/commit/f600198fbfa16ac6dd123f3573d6a0f368a04155) 已交付并独立核验安装包与数据库完整性。0.3.4 / [5acc688](https://github.com/shishengkai/social-lurker/commit/5acc68834ed7c0d911a1e7209f003555875a0602) 已推送，**108 项 pytest、ruff/格式、编译和安装冒烟通过**，[Python 3.12/3.13 GitHub CI](https://github.com/shishengkai/social-lurker/actions/runs/34744693599) 成功。0.3.4 已完成原实例升级并独立验证安装包、备份及数据库完整性。升级后一次真实列表检查成功；完整业务验收仍未通过。
 
-## 0.3.3 修复与白天续验（进行中）
+## 0.3.3–0.3.4 修复与白天续验
 
 2026-09-13 14:23，原 0.3.2 实例的一次稳定前台 poll 在约 3135 ms 内返回 pages=1、not_all_new、errors 为空，账本未新增作品；凌晨的超时本次未复现，不能推断其历史根因已修复。UTC 请求统计日切后，本次预留计数为 1。
 
@@ -18,10 +18,11 @@
 
 15:06 一次标准 Client/transport 诊断实际返回 HTTP/code=200，data 仅有 debug_id、debug_info、message；username、videos、objects、分页字段均不存在。供应商提示参数可能无效，不能仅凭该通用提示断言此前成功过的作者 ID 无效。耗时约 1030 ms，请求计数 4→5，未保存原响应；日志为 logs/wechat-list-structure-0.3.3.json。0.3.3 没有改变视频号解析逻辑，目前不能将上游间歇错误归因于升级。
 
-0.3.4 针对此结构返回 WECHAT_LIST_UNAVAILABLE 和核对作者/接口的安全提示，保留真实身份冲突拒绝和有效空尾页处理，不增加请求或自动重试，也不透出供应商调试内容。恢复验证同样拒绝该错误信封。新增 3 项回归，全套 108 项测试、ruff/格式、编译与双实例安装冒烟通过；此处是本地修复证据，尚未代替新版本实例验收。
+0.3.4 针对此结构返回 WECHAT_LIST_UNAVAILABLE 和核对作者/接口的安全提示，保留真实身份冲突拒绝和有效空尾页处理，不增加请求或自动重试，也不透出供应商调试内容。恢复验证同样拒绝该错误信封。新增 3 项回归，全套 108 项测试、ruff/格式、编译与双实例安装冒烟通过；15:22 实例升级完成，独立验证 0.3.4 源 SHA 为 5acc688、所有安装文件集合与摘要通过、备份摘要及两份 SQLite 完整性通过、原通知账本与升级备份逐行一致、maintenance.json 不存在。原生 UI 也读回原名称、版本感知指令、日间每两小时与暂停状态。随后前台 poll pages=1、errors=[]、not_all_new，预留计数 5→6；登记 metadata-r1.3 的近期页证据。此单次成功不能证明供应商间歇错误已消失。
 
-iPhone 通知设置已直接看到允许通知、立即推送、锁屏/通知中心/横幅开启，未修改系统设置。14:51 完成消息的系统横幅未被镜像捕捉，用户回答“没有留意”；因此推送通道和强静默仍未验证，quiet/native/images 能力保持未验证。没有把没有捕捉到横幅写成“没有推送”。
+iPhone 通知设置已直接看到允许通知、立即推送、锁屏/通知中心/横幅开启，未修改系统设置。14:51 完成消息的系统横幅未被镜像捕捉，用户回答“没有留意”；因此推送通道和强静默仍未验证，quiet/native/images 能力保持未验证。没有把没有捕捉到横幅写成“没有推送”。15:11:48 又做一次独立对照，Mac 聊天最小化、iPhone 回到主屏幕后发出“手机系统推送验证：请确认这条横幅”；镜像仍没有捕捉到横幅，不能据此证明推送送达或无消息时的强静默。
 
+15:24 用用户原提供的视频号分享做完整前台链路验收，watch add 返回 WECHAT_DETAIL_UNAVAILABLE，解析器未取得作品身份；按约定停止，未新增关注、未做首次列表/试发/dispatch/发信。请求预留 6→8，原作者不变，最终仍 14 ignored、1 sent，last_automatic_slot=null，正式任务暂停。结果已独立读取 logs/e2e-wechat-share-0.3.4.json。此前一页成功与此次分享失败分别成立，不能合并成完整业务通过。
 ## 0.3.2 历史交付与验收
 
 - 固定官方 commit 预览升级完成：0.3.1 → 0.3.2，维护归档结果为 done/upgraded，原生 routine 恢复为真实暂停状态。直接读取实例验证 manifest 源 SHA、新旧版本全部文件摘要、备份摘要及 SQLite integrity_check 均通过。
