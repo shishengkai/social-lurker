@@ -2,8 +2,8 @@
   "version": "0.3.5",
   "design": "lightweight-r1",
   "schema_version": 1,
-  "observed_at": "2026-09-13T08:36:00Z",
-  "scope": "delivered_0.3.5_collaboration_fix_with_partial_live_acceptance",
+  "observed_at": "2026-09-13T09:24:00Z",
+  "scope": "delivered_0.3.5_native_probe_silence_verified_formal_routine_enabled_business_pending",
   "python": "3.12.13",
   "checks": {
     "pytest": {
@@ -56,12 +56,12 @@
   "git_delivered": true,
   "live_acceptance": "partial_development_evidence_only",
   "pending": [
-    "grok_native_routine_and_strong_silence",
     "grok_iphone_cover_transport",
     "linux_missing_python_bootstrap",
     "immutable_stable_release_install_upgrade",
     "tikhub_pagination_and_more_work_types",
-    "grok_current_native_business_after_foreground_delivery"
+    "grok_current_native_business_after_foreground_delivery",
+    "grok_formal_business_round_and_no_update_silence"
   ],
   "live_daytime_20260913": {
     "installed_version": "0.3.4",
@@ -382,21 +382,31 @@
     "historical_snapshot_version": "0.3.2"
   },
   "live_host": {
-    "installed_version": "0.3.4",
-    "source_commit": "5acc68834ed7c0d911a1e7209f003555875a0602",
-    "independent_package_verification": true,
-    "sqlite_integrity": "ok",
-    "maintenance_present": false,
-    "routine_paused_ui_readback": true,
-    "strong_silence_verified": false,
+    "installed_version": "0.3.5",
+    "source_commit": "8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3",
+    "native_schedule_verified": true,
+    "pure_probe_silence_verified": true,
+    "business_round_silence_verified": false,
     "images_verified": false,
+    "routine_active": true,
+    "mode": "automatic_ready",
+    "missing": [],
+    "settings_and_setup_independently_read": true,
+    "native_ui_enabled_readback": true,
+    "source_capabilities": {
+      "douyin:normal": "recent_pages_verified",
+      "wechat_channels:default": "recent_pages_verified"
+    },
+    "adapter_version": "metadata-r1.4",
     "work_ledger": {
-      "ignored": 14,
-      "sent": 1
+      "ignored": 67,
+      "sent": 3
     },
     "request_count_day": "2026-09-13",
-    "requests_reserved": 8,
-    "last_automatic_slot": null
+    "requests_reserved": 27,
+    "last_automatic_slot": null,
+    "first_formal_business_slot": "2026-09-13T19:00:00+08:00",
+    "followup_scheduled_at": "2026-09-13T19:20:00+08:00"
   },
   "live_new_shares_20260913": {
     "version": "0.3.4",
@@ -500,5 +510,81 @@
     "formal_routine_paused": true,
     "proves_silence": false,
     "log": "logs/cancelled-probe-sl-quiet-20260913-1635.json"
+  },
+  "live_host_0_3_4_history": {
+    "installed_version": "0.3.4",
+    "source_commit": "5acc68834ed7c0d911a1e7209f003555875a0602",
+    "independent_package_verification": true,
+    "sqlite_integrity": "ok",
+    "maintenance_present": false,
+    "routine_paused_ui_readback": true,
+    "strong_silence_verified": false,
+    "images_verified": false,
+    "work_ledger": {
+      "ignored": 14,
+      "sent": 1
+    },
+    "request_count_day": "2026-09-13",
+    "requests_reserved": 8,
+    "last_automatic_slot": null
+  },
+  "native_probes_1655_1706": {
+    "version": "0.3.5",
+    "first": {
+      "probe_id": "sl-quiet-20260913-1655",
+      "scheduled_at": "2026-09-13T16:55:00+08:00",
+      "failure_read_at": "2026-09-13T16:58:57+08:00",
+      "native_history": "success",
+      "program_ok": false,
+      "exit_code": 2,
+      "reason": "required_instance_argument_omitted",
+      "iphone_new_notification_reported": true,
+      "iphone_notification_content_and_origin": "unresolved",
+      "accepted_as_silence_proof": false
+    },
+    "second": {
+      "probe_id": "sl-quiet-20260913-1706",
+      "scheduled_at": "2026-09-13T17:06:00+08:00",
+      "observed_at": 1789290827,
+      "actual_time": "2026-09-13T17:13:47+08:00",
+      "file_mtime": "2026-09-13T17:13:47.739957+08:00",
+      "native_history": "success",
+      "program_ok": true,
+      "protocol": 1,
+      "kind": "host_wake_probe",
+      "data_requests": 0,
+      "messages_sent": 0,
+      "full_instance_argument_verified": true,
+      "mode": "0600",
+      "desktop_new_automatic_messages": 0,
+      "iphone_observation_window": "2026-09-13T17:06:00+08:00/2026-09-13T17:15:00+08:00",
+      "iphone_no_new_notifications_user_confirmed": true,
+      "pure_probe_silence_passed": true,
+      "proves_full_automatic_business": false
+    },
+    "ledger_unchanged_during_probes": {
+      "ignored": 67,
+      "sent": 3,
+      "requests_reserved": 26,
+      "last_automatic_slot": null
+    },
+    "both_temporary_routines_paused_deleted_and_absent_in_ui": true,
+    "wechat_current_adapter_poll": {
+      "pages": 1,
+      "errors": [],
+      "requests_reserved_before": 26,
+      "requests_reserved_after": 27,
+      "adapter_version": "metadata-r1.4",
+      "source_level": "recent_pages_verified",
+      "retried": false,
+      "proves_intermittency_resolved": false
+    },
+    "formal_routine_full_instance_command_corrected": true,
+    "logs": [
+      "logs/native-probe-sl-quiet-20260913-1655.json",
+      "logs/native-probe-sl-quiet-20260913-1706.json",
+      "logs/acceptance-native-probes-20260913.json",
+      "logs/acceptance-post-probe-20260913.json"
+    ]
   }
 }

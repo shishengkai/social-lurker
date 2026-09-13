@@ -1,6 +1,22 @@
 # 轻量 R1 验证记录
 
-当前：0.3.5 / [8ed3403](https://github.com/shishengkai/social-lurker/commit/8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3) 已推送、交付并独立核验，120 项本地测试、检查、安装冒烟及 [Python 3.12/3.13 CI](https://github.com/shishengkai/social-lurker/actions/runs/34747233313) 通过。两平台前台通知已跑通，用户确认两条消息均能在 iPhone 打开正确作品；仅确认收到视频号作品系统通知，抖音作品系统通知未找到。合作作品过滤已实测通过，视频号仍间歇报错，完整自动流程与强静默待验。
+当前：0.3.5 / [8ed3403](https://github.com/shishengkai/social-lurker/commit/8ed340343900fda5f5ad128ba32bbf1bcdfd0ee3) 已推送、交付并独立核验，120 项本地测试、检查、安装冒烟及 [Python 3.12/3.13 CI](https://github.com/shishengkai/social-lurker/actions/runs/34747233313) 通过。两平台前台通知、手机原链接及合作作品过滤已通过。17:13:47 的原生纯探针和桌面/iPhone 静默验证通过；视频号当前适配器来源证据已补齐，正式日间任务已启用并独立读回 automatic_ready。首轮完整自动业务待验，视频号间歇故障未宣称修复，手机作品系统推送仍仅部分确认。
+
+## 原生静默通过与正式日程启用
+
+2026-09-13 手机准备确认后，独立临时探针 sl-quiet-20260913-1655 在原生运行历史显示成功，但实际文件只包含 CLI exit_code=2、缺少必需的 --instance 参数。只读观察器于 16:58:57 读到该失败；不能把任务层成功当成程序成功。用户报告这一轮观察窗出现手机新通知，具体内容和来源尚未确认，第一轮不计静默通过。失败文件保留，临时任务已暂停并删除。
+
+修正为完整绝对入口与 --instance 后，独立任务 sl-quiet-20260913-1706 计划 17:06，实际 envelope observed_at=1789290827，即 **17:13:47+08:00**，文件修改时间为 17:13:47.739957。直接读取实际 stdout：ok=true、protocol=1、kind=host_wake_probe、version=0.3.5、probe_id 匹配，data_requests=0、messages_sent=0，权限 0600。原生 UI 为定时运行成功；只读观察器没有调用 probe，只等待并读取文件。
+
+两轮前后账本均为 67 ignored、3 sent，requests_reserved=26、last_automatic_slot=null。Mac Grok 聊天置于后台，第二轮没有新增自动对话；用户明确确认 17:06–17:15 的 iPhone 没有新通知。仅第二轮作为原生唤醒和静默证据；7 分 47 秒的调度延迟不代表准点保证，也不证明完整业务检查已执行。两个临时任务最终都已删除，原生列表仅保留正式任务。
+
+随后按真实证据登记 native/quiet=true、images=false。只对布鱼AI做一次当前稳定入口前台 poll：pages=1、errors=[]，requests_reserved 26→27，登记 wechat_channels:default / metadata-r1.4 / recent_pages_verified；没有重试、领取许可或发送作品。本次成功不消除上游间歇失败的历史事实。
+
+正式 automation-1789242387328 的指令补全 /usr/bin/python3 -I -B、绝对 run.py 与 --instance，再保留 routine poll → routine next、版本感知 skill、严格回执、禁止前台降级和无过程消息规则。能力缺项为空后，原生启用并查询、setup bind 同步真实状态；独立读取 settings 和稳定入口 setup check：automatic_ready、missing=[]、active/requested_active/observed_active/synchronized 均 true，两平台当前来源均 recent_pages_verified。日程仍为 Asia/Shanghai 07/09/11/13/15/17/19/21/23；没有补跑已过的 17 点槽。
+
+启用后的独立账本基线仍为 67 ignored、3 sent、请求计数 27、last_automatic_slot=null。因此当前结论是**正式日程已启用，等待 19:00 槽的首轮完整自动业务验收**。首轮结束将仅内部保存脱敏摘要，不发验收完成消息；19:20 的一次续验已安排。
+
+实例证据：logs/native-probe-sl-quiet-20260913-1655.json、native-probe-sl-quiet-20260913-1706.json、acceptance-native-probes-20260913.json、acceptance-post-probe-20260913.json。首轮业务日志 acceptance-automatic-business-20260913.json 尚待真实运行生成。软件执行包未改版，没有额外作品消息或媒体操作。
 
 ## 新分享、真实通知与合作作品规则
 
@@ -107,13 +123,13 @@ iPhone 通知设置已直接看到允许通知、立即推送、锁屏/通知中
 
 这些限制不是本地测试失败，也不能被本地测试替代：
 
-- Grok Bot 的完整日间自动业务路径和无过程对话/推送的强静默。长度依据已经实测补齐；iPhone 两种封面发送方式均失败，当前采用文字回退。
-- TikHub 抖音当前适配、视频号不同作品类型、分页/置顶/尾页/重复游标覆盖，以及实际 RPS 例外。单条分享解析与一页列表验证不等于整体覆盖，实例适配默认 unverified。
-- 手机打开原链接效果、实际未知送达核对和宿主限流。普通试发的真实 message id/时间回执已有证据，不代表这些分支通过。
+- Grok Bot 的首轮完整日间自动业务路径及其无更新静默。独立纯探针的原生唤醒、桌面/iPhone 静默与长度依据已通过，不能代替业务轮验收；封面仍采用文字回退。
+- TikHub 的不同作品类型、分页/置顶/尾页/重复游标覆盖，以及实际 RPS 例外。当前实例两平台已登记 metadata-r1.4 的近期页证据，不能据单页成功宣称完整覆盖或永久可用。
+- 两条作品系统推送的全部确认、实际未知送达核对和宿主限流。两条手机原链接已由用户确认通过，视频号作品系统通知已有确认，抖音作品系统通知未找到。
 - 缺少 Python 时在目标 Linux 自动下载环境的完整安装；本次目标 Bot 复用已有 Python 3.13.5。
 - 已发布的不可变轻量软件 Release 的下载、真实升级与原生 routine 恢复、成功后的 Star 邀请。当前软件 Release 尚未发布。
-- 当前版本的完整真实业务验收：历史安装、升级恢复与长度证据已有直接验证；本次 0.3.3 CI 成功和 Bot 报告升级完成，不能代替两平台新增关注、通知交付和自动业务全部通过。
+- 当前版本的完整真实业务验收：0.3.5 已独立核验，前台通知、原链接、宿主纯探针和后台启用各有证据；正式日程启用不能代替尚未发生的自动业务结果。
 
 历史样本用于构建脱敏回归用例，当前真实接口结果单独记录在上方；没有把旧全文版的历史测试数或单页成功当作新版完整验收。
 
-正式 V1–V23、A1–A19 仍应分别登记目标环境证据，不能因这里列出 105 项测试就宣称全套产品验收完成。
+正式 V1–V23、A1–A19 仍应分别登记目标环境证据，不能因这里列出 120 项测试就宣称全套产品验收完成。
