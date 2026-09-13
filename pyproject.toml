@@ -1,6 +1,6 @@
 [project]
 name = "social-lurker"
-version = "0.3.4"
+version = "0.3.5"
 description = "盯梢者：Grok Bot 的新发布动态监测与四字段通知"
 requires-python = ">=3.12"
 dependencies = []

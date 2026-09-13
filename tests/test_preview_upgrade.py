@@ -35,7 +35,7 @@ def target(tmp_path):
     shutil.copyfile(ROOT / "tools/launcher.py", repo / "tools/launcher.py")
     shutil.copyfile(ROOT / "LICENSE", repo / "LICENSE")
     init = repo / "src/social_lurker/__init__.py"
-    init.write_text(init.read_text().replace('"0.3.4"', '"0.3.5"'))
+    init.write_text(init.read_text().replace('"0.3.5"', '"0.3.6"'))
     (repo / ".gitignore").write_text("ignored.py\n")
     git(repo, "init", "-q")
     git(repo, "remote", "add", "origin", "https://github.com/shishengkai/social-lurker.git")
@@ -114,7 +114,7 @@ def test_preview_upgrade_preserves_credentials_receipts_and_reenters_installed_c
     settings = instance.load()
     settings["host"]["evidence_ref"]["host"].update(native_schedule_verified=False, routine_active=False)
     atomic_json(instance.path("settings.json"), settings)
-    old_files = {str(p): p.read_bytes() for p in instance.path("app/0.3.4").rglob("*") if p.is_file()}
+    old_files = {str(p): p.read_bytes() for p in instance.path("app/0.3.5").rglob("*") if p.is_file()}
     old_env, old_updates = instance.path(".env").read_bytes(), updates(instance)
     repo, commit = target
     with pytest.raises(LurkerError, match="INSTANCE_MISMATCH"):
@@ -123,7 +123,7 @@ def test_preview_upgrade_preserves_credentials_receipts_and_reenters_installed_c
     assert result["ok"] and result["delivery_channel"] == "development_preview"
     assert result["target_commit"] == commit and not result["stable_release_published"]
     assert result["result"]["routine_restore"]["active"] is False
-    assert instance.load()["app_version"] == "0.3.5"
+    assert instance.load()["app_version"] == "0.3.6"
     with pytest.raises(LurkerError, match="MAINTENANCE_ACTIVE"):
         preview.upgrade(repo, instance.root, commit=commit, bot_id="fixture-bot", confirmed=True)
     plan = instance.plan()
@@ -162,4 +162,4 @@ def test_source_changed_during_build_is_not_installed(instance, target, monkeypa
     with pytest.raises(LurkerError, match="PREVIEW_COMMIT_MISMATCH"):
         preview.upgrade(repo, instance.root, commit=commit, bot_id="fixture-bot", confirmed=True)
     assert instance.plan() is None and instance.path("settings.json").read_bytes() == original
-    assert not instance.path("app/0.3.5").exists()
+    assert not instance.path("app/0.3.6").exists()

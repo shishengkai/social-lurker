@@ -7,6 +7,8 @@ description: 在 Grok Bot 中管理作者关注、检查新发布动态，并用
 
 只处理新发布动态。每条作品一条消息，含作者、发布时间、标题、原作品链接；列表顺带返回且可公开访问的封面可附图。不下载作品、不转写、不生成全文或摘要。没有新作品且没有需处理故障时保持安静。
 
+只通知关注作者本人发布的作品。抖音主页可能混入由别人发布、该作者参与合作的作品；程序仅在主页身份匹配、合作作者列表明确包含关注作者时跳过这些作品，不入库、不通知，也不因过滤后剩余作品全新而继续翻页。身份不明或冲突的外来作品仍拒绝整页。`poll` 中的 excluded_collaborations 是本轮跳过的合作作品数，不是错误或待发项。
+
 ## 实例和调用
 
 先使用当前 Bot 已绑定的 Python 绝对路径、实例绝对目录和该目录 `run.py`。不猜 `/workspace` 持久性，不扫描其他实例，不把 API key 放进对话、命令参数或日志。缺失安装或绑定时转维护入口。
@@ -40,6 +42,7 @@ routine 内部先 `routine poll`，再用 `routine next` 按下节处理待发�
 1. 前台用 `dispatch next`，后台用 `routine next`，返回 null 就结束。显式试发传 foreground_test:true 和 test-latest 返回的 update_id，程序仅领取该试发作品，不消费普通通知。用户要求的首次图文试发，在核对宿主工具支持一条消息携带图片参数后，再加 test_images:true；这只允许本次许可附列表封面，不将 images_verified 设为 true。TEST_COVER_UNAVAILABLE 表示尚未领取许可，可去掉 test_images 继续同作品纯文字试发；无需再调列表。若无合格封面，就如实报告图片尚未验收。前台可使用用户选定的操作上限，但必须由维护入口明确登记 length_basis:user_selected；不能把这个选择或短消息发送成功写成宿主长度证据，后台还需文档或实际长度验证。
 2. 返回的 instance_id、kind、object_id、attempt_id、payload_hash 是本次发送许可。**仅使用 payload.text 和 payload.images 调用宿主发送工具，原样发送，不加前后缀、不分割、不改写、不跨 Bot。** 每个许可只调用一次发送。常规通知使用已验证能力；首次图文试发是明确的能力测试。封面与文字必须合在同一 message ID，不把图片单独补发；宿主支持原生 images 就映射该数组，只有工具明确支持同条 Markdown 图片时才使用等价格式转换。封面链接可能含仅访问该图片的短期签名，不得摘掉签名、在消息正文/日志中列出地址，或改为下载上传。宿主返回限流时登记真实失败/未知结果并结束本轮；已固定消息不能临时删图再发送。
 3. 取得宿主实际返回的 message id 和发送时间才用 `dispatch report` 登记 result:sent、provider_message_id、sent_at（UTC 秒）及完整许可标识。不能把模型输出、进程退出码或自行编造 ID 当作送达证据。
+   回执 JSON 平铺传入：protocol:1，加许可的 instance_id、kind、object_id、attempt_id、payload_hash，再加 result、provider_message_id、sent_at。这里必须用 object_id，不能替换成 update_id；不要传 payload 或自行嵌套 receipt。若回执因字段名错误被拒绝，只修正同一发送尝试的登记，不再调用发送工具。
 4. 超时或不确定用 result:unknown，绝不自动重发。可信工具明确拒绝或对该 attempt 的可信查询证明未送达，才用 result:not_sent 和 evidence：type 为 provider_rejected 或 provider_lookup_not_delivered，reference 指向真实工具结果，attempt_id 与许可一致。
 5. `dispatch resolve` 使用完全相同的回执格式，仅在取得新的核对证据时调用。暂停后或升级期间迟到回执仍提交；pending_registration 表示维护收件箱已接收，尚未登记为 sent，不重复发送。
 

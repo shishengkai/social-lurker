@@ -94,6 +94,10 @@ class Monitor:
                     pages += 1
                     progress = scans.setdefault(uid, {"watch_id": uid, "pages": 0, "stop_reason": None})
                     progress["pages"] += 1
+                    if page.excluded_count:
+                        progress["excluded_collaborations"] = (
+                            progress.get("excluded_collaborations", 0) + page.excluded_count
+                        )
                     progress["stop_reason"] = (
                         "continuation_pending"
                         if more

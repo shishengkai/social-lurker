@@ -20,7 +20,7 @@ ENDPOINTS = {
     WX + "fetch_user_videos": "POST",
     WX + "fetch_video_share_url": "POST",
 }
-ADAPTER_VERSION = "metadata-r1.3"
+ADAPTER_VERSION = "metadata-r1.4"
 
 
 @dataclass(frozen=True)
@@ -62,6 +62,7 @@ class Page:
     next_cursor: str | None
     end_state: str
     order_hint: str = "latest"
+    excluded_count: int = 0
 
 
 def timestamp(value):
@@ -224,6 +225,44 @@ def publication(platform, item, author_id=None, author_name="", *, from_list=Tru
     )
 
 
+def douyin_page(data, author_id, author_name=""):
+    """Keep primary-author posts; recognized co-created posts do not authorize pagination."""
+    require(isinstance(data, dict), "RESPONSE_INVALID")
+    require(
+        data.get("sec_uid") == author_id and isinstance(data.get("aweme_list"), list),
+        "PAGE_IDENTITY_INVALID",
+    )
+    require(
+        type(data.get("has_more")) in (int, bool) and data["has_more"] in (0, 1),
+        "PAGE_PROTOCOL_INVALID",
+    )
+    items, excluded, identities = [], set(), {}
+    for item in data["aweme_list"]:
+        require(isinstance(item, dict), "PAGE_PROTOCOL_INVALID")
+        author = item.get("author")
+        require(isinstance(author, dict) and bool(author.get("sec_uid")), "PAGE_IDENTITY_INVALID")
+        primary = platform_id(author["sec_uid"])
+        work_id = platform_id(item.get("aweme_id"))
+        require(work_id not in identities or identities[work_id] == primary, "PAGE_IDENTITY_INVALID")
+        identities[work_id] = primary
+        if primary != author_id:
+            cooperation = item.get("cooperation_info")
+            creators = cooperation.get("co_creators") if isinstance(cooperation, dict) else None
+            require(
+                isinstance(creators, list)
+                and any(isinstance(c, dict) and c.get("sec_uid") == author_id for c in creators),
+                "PAGE_IDENTITY_INVALID",
+            )
+            excluded.add(work_id)
+            continue
+        items.append(publication("douyin", item, author_id, author_name))
+    more = bool(data["has_more"])
+    raw = data.get("max_cursor")
+    cursor = platform_id(raw) if more and raw is not None else None
+    require(not more or (data["aweme_list"] and cursor), "PAGE_PROTOCOL_INVALID")
+    return Page(items, cursor, "more" if more else "confirmed_end", excluded_count=len(excluded))
+
+
 class TikHub:
     def __init__(self, client):
         self.client = client
@@ -330,18 +369,7 @@ class TikHub:
             self.list_endpoint(watch), params, watch=(watch["id"], watch["generation"]), **request
         )
         if platform == "douyin":
-            require(
-                data.get("sec_uid") == aid and isinstance(data.get("aweme_list"), list),
-                "PAGE_IDENTITY_INVALID",
-            )
-            require(
-                type(data.get("has_more")) in (int, bool) and data["has_more"] in (0, 1),
-                "PAGE_PROTOCOL_INVALID",
-            )
-            items = [publication(platform, i, aid, watch["author_name"]) for i in data["aweme_list"]]
-            more = bool(data["has_more"])
-            raw = data.get("max_cursor")
-            cursor_out = platform_id(raw) if more and raw is not None else None
+            return douyin_page(data, aid, watch["author_name"])
         else:
             check_wechat_list_error(data)
             require(
@@ -438,18 +466,7 @@ def validate_probe(endpoint, data, params):
     """A syntactically successful envelope is insufficient evidence of endpoint recovery."""
     suffix = endpoint.rsplit("/", 1)[1]
     if suffix == "fetch_user_post_videos":
-        require(
-            data.get("sec_uid") == params["sec_user_id"] and isinstance(data.get("aweme_list"), list),
-            "RESPONSE_INVALID",
-        )
-        require(type(data.get("has_more")) in (int, bool) and data["has_more"] in (0, 1), "RESPONSE_INVALID")
-        for item in data["aweme_list"]:
-            require(
-                publication("douyin", item, params["sec_user_id"]).author_id == params["sec_user_id"],
-                "PAGE_IDENTITY_INVALID",
-            )
-        if data["has_more"]:
-            platform_id(data.get("max_cursor"))
+        douyin_page(data, params["sec_user_id"])
     elif suffix == "fetch_user_videos":
         check_wechat_list_error(data)
         require(

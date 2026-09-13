@@ -237,8 +237,13 @@ class Store:
             w = active(db, watch_id, generation)
             require(w["scan_state_json"] and parse_json(w["scan_state_json"]) == scan, "SCAN_CHANGED")
             require(page.end_state in {"more", "confirmed_end"}, "PAGE_PROTOCOL_INVALID")
+            require(type(page.excluded_count) is int and page.excluded_count >= 0, "PAGE_PROTOCOL_INVALID")
             require(
-                (page.end_state == "more" and page.next_cursor is not None and bool(page.items))
+                (
+                    page.end_state == "more"
+                    and page.next_cursor is not None
+                    and (bool(page.items) or page.excluded_count > 0)
+                )
                 or (page.end_state == "confirmed_end" and page.next_cursor is None),
                 "PAGE_PROTOCOL_INVALID",
             )
@@ -270,11 +275,15 @@ class Store:
                 if row:
                     require(row["watch_id"] == w["id"], "PAGE_IDENTITY_INVALID")
                     existing[pid] = dict(row)
-            all_new = bool(items) and all(
-                pid not in existing
-                and p.published_at is not None
-                and scan["lower"] <= p.published_at <= scan["upper"]
-                for pid, p in items.items()
+            all_new = (
+                bool(items)
+                and not page.excluded_count
+                and all(
+                    pid not in existing
+                    and p.published_at is not None
+                    and scan["lower"] <= p.published_at <= scan["upper"]
+                    for pid, p in items.items()
+                )
             )
             for pid, p in items.items():
                 row = existing.get(pid)
