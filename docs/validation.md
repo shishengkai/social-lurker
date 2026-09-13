@@ -2,6 +2,16 @@
 
 2026-09-13，0.3.2 / [881ce3a](https://github.com/shishengkai/social-lurker/commit/881ce3a3fe388da633458c7e1af3e66b88088c0c) 已推送并升级到当前 Grok Bot 实例。**96 项 pytest 通过**，ruff/格式、compileall、git diff --check 和双实例安装冒烟通过；[Python 3.12/3.13 GitHub CI](https://github.com/shishengkai/social-lurker/actions/runs/34720040699) 成功。程序交付与数据保全已通过，完整业务验收尚未通过；下文将当前实测与 0.3.1 历史证据分别记录。
 
+## 0.3.3 修复与白天续验（进行中）
+
+2026-09-13 14:23，原 0.3.2 实例的一次稳定前台 poll 在约 3135 ms 内返回 pages=1、not_all_new、errors 为空，账本未新增作品；凌晨的超时本次未复现，不能推断其历史根因已修复。UTC 请求统计日切后，本次预留计数为 1。
+
+随后抖音分享诊断约 3198 ms 返回 HTTP/code=200、status_code=0，aweme_details=null、filter_list.reason=5。TikHub [该端点官方说明](https://docs.tikhub.io/186826220e0)将 reason=5 解释为私密内容；这是接口的过滤结论，不据此断言作者账号私密。未新增关注、未试发作品，没有切换端点尝试获取受限内容。已请用户补充公开作品链接。
+
+0.3.3 增加单作品响应解析，兼容 aweme_detail 对象及唯一的 aweme_details 元素；多作品或冲突表示拒绝猜测。空结果返回 DOUYIN_DETAIL_UNAVAILABLE，按已知过滤码解释问题，不泄露原响应，不增加请求，不自动重试。适配器版本 metadata-r1.3 使历史能力证据重新待验。105 项 pytest、ruff、格式与编译检查通过；新增用例覆盖过滤、两种单作品形状、身份匹配和歧义拒绝。单元素列表支持当前是代码与测试证据，真实公开抖音样本仍待核验。
+
+手机镜像已连通；独立链接诊断 t22s0 已显示。直接在手机 Safari 访问视频号原链接后，可进入微信播放作者和标题匹配的作品；这不等于 Grok Bot 消息内点击已通过。原生任务临时探针与消息点击仍在验证，正式业务尚未启用。后续结果会在本节更新。
+
 ## 0.3.2 当前实例交付与验收
 
 - 固定官方 commit 预览升级完成：0.3.1 → 0.3.2，维护归档结果为 done/upgraded，原生 routine 恢复为真实暂停状态。直接读取实例验证 manifest 源 SHA、新旧版本全部文件摘要、备份摘要及 SQLite integrity_check 均通过。

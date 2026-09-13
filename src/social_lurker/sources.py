@@ -20,7 +20,7 @@ ENDPOINTS = {
     WX + "fetch_user_videos": "POST",
     WX + "fetch_video_share_url": "POST",
 }
-ADAPTER_VERSION = "metadata-r1.2"
+ADAPTER_VERSION = "metadata-r1.3"
 
 
 @dataclass(frozen=True)
@@ -84,6 +84,33 @@ def wx_detail(data):
         "PAGE_IDENTITY_INVALID",
     )
     return objects[0]
+
+
+def douyin_detail(data):
+    """Extract one work, or explain a provider-filtered empty response without retrying."""
+    require(isinstance(data, dict), "RESPONSE_INVALID")
+    single, many = data.get("aweme_detail"), data.get("aweme_details")
+    require(single is None or isinstance(single, dict), "PAGE_PROTOCOL_INVALID")
+    require(many is None or isinstance(many, list), "PAGE_PROTOCOL_INVALID")
+    items = ([single] if single else []) + (many or [])
+    if items:
+        require(len(items) == 1 and isinstance(items[0], dict), "PAGE_IDENTITY_INVALID")
+        return items[0]
+    filters = data.get("filter_list")
+    reasons = {
+        item["reason"]
+        for item in (filters if isinstance(filters, list) else [])
+        if isinstance(item, dict) and type(item.get("reason")) is int
+    }
+    if 5 in reasons:
+        message = "数据接口将此作品标记为私密，未返回作品资料；请换一条公开作品链接"
+    elif 10 in reasons:
+        message = "数据接口将此作品标记为部分可见，未返回作品资料；请换一条公开作品链接"
+    elif 8 in reasons:
+        message = "数据接口提示作品不可用或受版权限制；请换一条公开作品链接"
+    else:
+        message = "数据接口未返回可用的抖音作品资料；请核对链接后再试"
+    raise LurkerError("DOUYIN_DETAIL_UNAVAILABLE", message, next_action="provide_public_share_link")
 
 
 def cover(value):
@@ -245,7 +272,7 @@ class TikHub:
                     item = self.wechat_detail({"share_url": source}, **request)
                 else:
                     data = self.client.call(endpoint, {"share_url": source}, **request)
-                    item = data.get("aweme_detail", {})
+                    item = douyin_detail(data)
                 parsed = publication(platform, item, from_list=False)
                 aid = parsed.author_id
                 if platform == "wechat_channels" and parsed.author_name != aid:
@@ -331,7 +358,7 @@ class TikHub:
                 detail = self.wechat_detail({"object_id": p.work_id}, **request)
             else:
                 data = self.client.call(DY + "fetch_one_video", {"aweme_id": p.work_id}, **request)
-                detail = data.get("aweme_detail") or {}
+                detail = douyin_detail(data)
             p = publication(p.platform, detail, from_list=False)
             require(
                 p.work_id == row["work_id"] and p.author_id == watch["author_id"], "PAGE_IDENTITY_INVALID"
@@ -433,7 +460,7 @@ def validate_probe(endpoint, data, params):
         p = (
             publication("wechat_channels", wx_detail(data), from_list=False)
             if suffix == "fetch_video_detail"
-            else publication("douyin", data.get("aweme_detail"), from_list=False)
+            else publication("douyin", douyin_detail(data), from_list=False)
         )
         if "object_id" in params or "aweme_id" in params:
             require(p.work_id == params.get("object_id", params.get("aweme_id")), "PAGE_IDENTITY_INVALID")
