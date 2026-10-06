@@ -1,9 +1,10 @@
 from dataclasses import replace
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 from ..errors import require
 from ..transport import DY
 from .base import Author, Page, Work, identity, public_url, text, timestamp
+from .links import resolve_douyin_link
 
 
 def provider_id(value):
@@ -90,9 +91,9 @@ class Douyin:
         self.transport = transport
 
     def resolve_author(self, link):
-        u = urlsplit(link)
-        if u.path.startswith("/user/") and u.hostname in {"www.douyin.com", "douyin.com"}:
-            aid = identity(u.path.split("/")[2])
+        kind, resolved_id = resolve_douyin_link(link, self.transport.redirect)
+        if kind == "user":
+            aid = identity(resolved_id)
             data = self.transport.call(DY + "handler_user_profile", {"sec_user_id": aid})
             user = data.get("user")
             require(isinstance(user, dict) and user.get("sec_uid") == aid, "PAGE_IDENTITY_INVALID")

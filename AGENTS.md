@@ -1,6 +1,6 @@
 # social-lurker CLI implementation
 
-当前软件版本 0.5.0；规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。
+当前软件版本 0.5.1；规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。
 先检查分支、工作区和适用指南。功能开发在 codex/ 分支进行，通过 PR 合回 main；发布从固定、干净的合并提交构建。
 
 - 纯 Python 3.12+ 标准库 CLI；查询元信息。外围负责调度、展示、通知。
