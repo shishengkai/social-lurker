@@ -6,7 +6,7 @@
 2. 推送分支、创建 PR，等待 ubuntu/macos × Python 3.12/3.13 的 pytest、ruff、安装冒烟与构建检查全部成功，再普通 merge。
 3. 同步 main，核对远端/本地合并 SHA。执行 `uv run python tools/build_release.py --output <目录>`，禁止使用 --development 发布。
 4. 在同一精确 SHA 创建 vX.Y.Z tag。正式 manifest 为 product=social-lurker、distribution=cli、source_state=clean，Python/schema 与逐文件 SHA256 有效。
-5. 仓库须启用 immutable releases。先创建 draft，上传 social-lurker-cli-VERSION.tar.gz 与 social-lurker-cli-VERSION.manifest.json，复核上传摘要后发布，不在发布后补资产。
+5. 仓库须启用 immutable releases。先创建 draft，上传 social-lurker-VERSION.tar.gz 与 social-lurker-VERSION.manifest.json，复核上传摘要后发布，不在发布后补资产。
 6. 核对 Release 非 draft/非 prerelease、immutable=true、tag 精确 SHA、GitHub 资产摘要与本地一致。下载正式资产，在独立临时目录安装并验证版本、profile/config 和显式 upgrade check/apply 无变化。
 7. 将实际 PR、CI、Release、资产与未验证边界记录到 brain；不自动升级目标 Bot 或旧实例。
 

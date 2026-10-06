@@ -1,6 +1,6 @@
 [project]
 name = "social-lurker"
-version = "0.5.1"
+version = "0.5.2"
 description = "盯梢者：独立 profile 的作品元信息 CLI"
 requires-python = ">=3.12"
 dependencies = []

@@ -57,6 +57,7 @@ def parser():
     actions = config.add_subparsers(dest="action", required=True, parser_class=Parser)
     actions.add_parser("set-key").add_argument("--stdin", action="store_true", help="从标准输入读取单行 key")
     actions.add_parser("status")
+    actions.add_parser("check", help="免费认证检查，不查询作品")
     up = sub.add_parser("upgrade", help="显式检查或应用正式版本")
     actions = up.add_subparsers(dest="action", required=True, parser_class=Parser)
     actions.add_parser("check")
@@ -157,6 +158,9 @@ def _run(
                             raise LurkerError("CONFIG_INVALID") from None
                     secrets.set_key(key)
                 payload = secrets.status()
+                if args.action == "check":
+                    transport = transport_factory(secrets, stats, config, before_request=output.ensure_open)
+                    payload = {**transport.check_credentials(), "credential_source": payload["source"]}
             else:
                 profile = registry.get(args.profile)
                 if args.command != "list":

@@ -16,6 +16,7 @@ MESSAGES = {
     "RATE_LIMITED": "供应商限流，已停止后续请求",
     "AUTH_FAILED": "供应商认证或权限不足",
     "QUOTA_UNAVAILABLE": "供应商账户额度不可用",
+    "ENDPOINT_NOT_FREE": "无法确认账户接口当前免费，已停止认证请求",
     "PAGE_INVALID": "供应商未返回有效页面结构",
     "PAGE_IDENTITY_INVALID": "页面身份缺失或冲突",
     "CURSOR_INVALID": "分页游标或页面重复、无效",

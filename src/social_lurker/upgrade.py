@@ -28,7 +28,7 @@ class GitHub:
         try:
             request = urllib.request.Request(
                 GITHUB + path,
-                headers={"Accept": "application/vnd.github+json", "User-Agent": "social-lurker-cli"},
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "social-lurker"},
             )
             with urllib.request.urlopen(request, timeout=20) as response:
                 return json.load(response)
@@ -64,7 +64,7 @@ class GitHub:
         # No TikHub headers or other credentials are used for software downloads.
         try:
             request = urllib.request.Request(
-                asset["browser_download_url"], headers={"User-Agent": "social-lurker-cli"}
+                asset["browser_download_url"], headers={"User-Agent": "social-lurker"}
             )
             with urllib.request.urlopen(request, timeout=30) as response, Path(target).open("xb") as out:
                 remaining = 32 * 1024 * 1024
@@ -93,7 +93,15 @@ def candidate(client, version=None):
     require(release.get("immutable") is True, "UPGRADE_FAILED")
     v = release["tag_name"][1:]
     sha = client.tag_sha(release["tag_name"])
-    expected = {f"social-lurker-cli-{v}.tar.gz", f"social-lurker-cli-{v}.manifest.json"}
+    # Immutable historical releases keep their original asset names.
+    assets = release.get("assets")
+    require(isinstance(assets, list) and all(isinstance(a, dict) for a in assets), "UPGRADE_FAILED")
+    prefix = "social-lurker"
+    if version_key(v) <= version_key("0.5.1") and not any(
+        a.get("name") == f"{prefix}-{v}.tar.gz" for a in assets
+    ):
+        prefix += "-cli"
+    expected = {f"{prefix}-{v}.tar.gz", f"{prefix}-{v}.manifest.json"}
     assets = release.get("assets")
     require(isinstance(assets, list), "UPGRADE_FAILED")
     selected = {}
@@ -115,14 +123,14 @@ def candidate(client, version=None):
     require(set(selected) == expected, "UPGRADE_FAILED")
     with tempfile.TemporaryDirectory(prefix="social-lurker-release-") as tmp:
         p = Path(tmp) / "manifest.json"
-        client.download(selected[f"social-lurker-cli-{v}.manifest.json"], p)
+        client.download(selected[f"{prefix}-{v}.manifest.json"], p)
         manifest = validate_manifest(read_json(p, "UPGRADE_FAILED"), version=v, sha=sha, stable=True)
     return {
         "version": v,
         "git_sha": sha,
         "manifest": manifest,
-        "manifest_sha256": selected[f"social-lurker-cli-{v}.manifest.json"]["digest"][7:],
-        "asset": selected[f"social-lurker-cli-{v}.tar.gz"],
+        "manifest_sha256": selected[f"{prefix}-{v}.manifest.json"]["digest"][7:],
+        "asset": selected[f"{prefix}-{v}.tar.gz"],
     }
 
 
