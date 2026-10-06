@@ -9,10 +9,10 @@
 用户把这个仓库网址交给你安装时，按以下顺序执行：
 
 1. 检查系统、Python 和是否已有纯 CLI 安装。首次安装用正式 Release 包；已有纯 CLI 用“升级”，不重装。
-2. 完成下载、SHA256 校验、安装与免费验收。不要把开发构建当成正式安装。
+2. 完成下载、SHA256 校验、安装自检与免费的 TikHub API 连通检查。不要把开发构建当成正式安装。
 3. 创建或选择该 Bot 使用的 profile，记住返回的真实 ID；所有业务命令必须显式选择它。
 4. 用户提供 TikHub API key 后，通过隐藏输入或安全的 stdin 配置；不把 key 写进聊天、命令参数或日志。
-5. 报告版本、入口、profile ID 和免费验收结果。尚未收到作者链接和检查频率时，在此结束；安装本身不需要付费 API。
+5. 分别报告版本、入口、profile ID、安装自检与 API 连通检查结果。尚未收到作者链接和检查频率时，在此结束；安装本身不需要付费 API。
 
 遇到失败时停止并报告错误码及失败步骤。不要自行写包装器、改安装文件、手工写库或切换供应商路径绕过错误。已有目录、旧实例、凭据和数据不删除、不自动导入。
 
@@ -83,7 +83,7 @@ SL_CLI="$HOME/.local/opt/social-lurker-cli/bin/social-lurker"
 
 要使用其他目录，在安装命令末尾加 `--install-root /绝对路径/程序 --data-root /绝对路径/数据`，随后把 `SL_CLI` 指向所选程序目录下的 `bin/social-lurker`。凭据路径可通过命令前的全局参数 `--credentials-file /绝对路径/credentials.json` 指定。
 
-## 创建 profile 与免费验收
+## 创建 profile 与安装自检
 
 profile 隔离关注列表和数据库。编号自动分配为 p0001、p0002…，显示标签不是 ID；没有默认空间或全局“当前空间”。新 Bot 通常创建自己的 profile，不复用其他 Bot 的空间。
 
@@ -103,7 +103,53 @@ SL_PROFILE_ID=p0001
 "$SL_CLI" config status
 ```
 
-新建且无作者的 profile 执行 `check` 不访问 TikHub，无需密钥。验收应看到版本 0.5.1、正确 profile、空关注列表、成功的 `complete` 和 `summary.requests=0`。`config status` 只显示是否配置及来源，不输出 key。
+新建且无作者的 profile 执行 `check` 不访问 TikHub，无需密钥。安装自检应看到版本 0.5.1、正确 profile、空关注列表、成功的 `complete` 和 `summary.requests=0`。`config status` 只显示是否配置及来源，不输出 key。
+
+## 免费检查 TikHub API 是否可达
+
+安装自检后，再真实请求官方 [健康检查接口](https://docs.tikhub.io/237673542e0)：`GET https://api.tikhub.io/api/v1/health/check`。官方示例不需要 API key，响应为 `{"status":"ok"}`。下面的公开探测不读取/发送凭据，不消费账户额度，也不调用作品接口；这不是使用新账号赠送额度请求付费接口。
+
+在将运行 Bot 的同一台机器上执行一次。使用安装时选定的 Python（沿用前面的 `PYTHON`，或设为该解释器的绝对路径）和与 CLI 一致的浏览器 UA；不开启重试、不跟随跳转。
+
+```sh
+"$PYTHON" - <<'PY'
+import json
+import urllib.error
+import urllib.request
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+request = urllib.request.Request(
+    "https://api.tikhub.io/api/v1/health/check",
+    headers={
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    },
+    method="GET",
+)
+try:
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+        raw = response.read(65537)
+        if response.status != 200 or len(raw) > 65536:
+            raise SystemExit("API_CONNECTIVITY_FAILED：状态或响应长度异常")
+        value = json.loads(raw)
+        if not isinstance(value, dict) or value.get("status") != "ok":
+            raise SystemExit("API_CONNECTIVITY_FAILED：健康状态不是 ok")
+except urllib.error.HTTPError as error:
+    raise SystemExit("API_CONNECTIVITY_FAILED：HTTP " + str(error.code)) from None
+except (OSError, ValueError):
+    raise SystemExit("API_CONNECTIVITY_FAILED：网络、超时或 JSON 响应异常") from None
+print("TikHub API 连通检查通过：HTTP 200，status=ok；未测试密钥与作品接口")
+PY
+```
+
+以 **HTTP 200 且 JSON 的 status=ok** 为通过标准；403、重定向、HTML、超时等均失败，不把“有网络响应”当成功，不自动换接口重试。`API_CONNECTIVITY_FAILED` 是这个 README 探测脚本的失败标记，不是 v0.5.1 CLI 新命令或错误码。
+
+这一步实际验证本机到 TikHub 的 HTTPS/网关/健康接口可达。官方明确它是存活探测，不检查依赖；因此不验证密钥、余额、抖音/视频号或作品查询能力。后续业务验收仍需真实调用相应接口。
+
+官方还有 [账户信息接口](https://docs.tikhub.io/186826050e0) `/api/v1/tikhub/user/get_user_info`，需要 Bearer key，返回余额、免费额度及 key 状态等信息。本次没有找到明确的免费定价依据，不把它列为免费验收步骤，也不请求或展示原始账户信息。
 
 ## 配置 TikHub 凭据
 
