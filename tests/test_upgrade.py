@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from conftest import ROOT, work
 
+from social_lurker import __version__
 from social_lurker.adapters.base import Author
 from social_lurker.db import Database
 from social_lurker.errors import LurkerError
@@ -30,7 +31,9 @@ def make_package(tmp, version="0.5.0", schema=1, *, overrides=None, bad_sql=Fals
         if path.is_file() and path.suffix in {".py", ".sql"} or path.name == "LICENSE":
             data = path.read_bytes()
             if path.name == "__init__.py" and path.parent.name == "social_lurker":
-                data = data.replace(b'__version__ = "0.5.0"', f'__version__ = "{version}"'.encode())
+                data = data.replace(
+                    f'__version__ = "{__version__}"'.encode(), f'__version__ = "{version}"'.encode()
+                )
             if path.name == "db.py":
                 data = data.replace(b"SCHEMA_VERSION = 1", f"SCHEMA_VERSION = {schema}".encode())
             files[path.relative_to(ROOT).as_posix()] = data

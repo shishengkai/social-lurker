@@ -1,6 +1,6 @@
-# 盯梢者（social-lurker）0.5.0
+# 盯梢者（social-lurker）0.5.1
 
-纯 Python CLI：登记作者首页基线，查询关注作者，把未入库作品的元信息逐条输出为 JSONL。调度、展示和通知由调用者承担。需要 Python 3.12+，运行依赖只有标准库。软件发行入口为 [v0.5.0](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.0)，发布与真实平台/Grok 使用验收分别记账。
+纯 Python CLI：登记作者首页基线，查询关注作者，把未入库作品的元信息逐条输出为 JSONL。调度、展示和通知由调用者承担。需要 Python 3.12+，运行依赖只有标准库。软件发行入口为 [v0.5.1](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.1)，发布与真实平台/Grok 使用验收分别记账。
 
 自动分配 p0001、p0002…，标签只用于显示。业务调用必须显式 --profile；没有默认空间或全局当前 profile。
 
@@ -22,8 +22,8 @@ uv run python tools/smoke_install.py
 正式包使用干净的固定提交构建，manifest 为 source_state=clean；发行资产与不可变 tag、Git SHA 和摘要一致。开发工作区预览须显式 --development，其 git_sha 只表示基准提交，实际代码由文件摘要固定。
 
 ```sh
-uv run python tools/build_release.py --output dist/cli-0.5.0
-uv run python install.py --package dist/cli-0.5.0/social-lurker-cli-0.5.0.tar.gz
+uv run python tools/build_release.py --output dist/cli-0.5.1
+uv run python install.py --package dist/cli-0.5.1/social-lurker-cli-0.5.1.tar.gz
 ~/.local/opt/social-lurker-cli/bin/social-lurker profile create --label=娱乐
 ~/.local/opt/social-lurker-cli/bin/social-lurker profile list
 ~/.local/opt/social-lurker-cli/bin/social-lurker config set-key

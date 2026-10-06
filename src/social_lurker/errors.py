@@ -12,6 +12,7 @@ MESSAGES = {
     "MAINTENANCE_BUSY": "安装正在维护或被业务占用",
     "REQUEST_TIMEOUT": "供应商请求超时",
     "NETWORK_ERROR": "网络请求失败",
+    "HTTP_BLOCKED": "请求被上游网关拦截，无法据此判断 API 密钥是否有效",
     "RATE_LIMITED": "供应商限流，已停止后续请求",
     "AUTH_FAILED": "供应商认证或权限不足",
     "QUOTA_UNAVAILABLE": "供应商账户额度不可用",
@@ -23,7 +24,7 @@ MESSAGES = {
     "INTERRUPTED": "调用已中断",
     "OUTPUT_CLOSED": "输出已关闭",
 }
-GLOBAL_CODES = {"AUTH_FAILED", "QUOTA_UNAVAILABLE", "RATE_LIMITED"}
+GLOBAL_CODES = {"AUTH_FAILED", "QUOTA_UNAVAILABLE", "RATE_LIMITED", "HTTP_BLOCKED"}
 
 
 class LurkerError(Exception):
@@ -55,7 +56,14 @@ class LurkerError(Exception):
             "code": self.code,
             "message": str(self),
             "retryable": self.code
-            in {"REQUEST_TIMEOUT", "NETWORK_ERROR", "RATE_LIMITED", "PROFILE_BUSY", "MAINTENANCE_BUSY"},
+            in {
+                "REQUEST_TIMEOUT",
+                "NETWORK_ERROR",
+                "HTTP_BLOCKED",
+                "RATE_LIMITED",
+                "PROFILE_BUSY",
+                "MAINTENANCE_BUSY",
+            },
         }
 
 

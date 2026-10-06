@@ -55,7 +55,7 @@ error/author_error 用固定脱敏消息，不输出 argv、供应商错误正�
 
 安装锁→registry 短锁→profile 操作锁→短 SQLite 事务。网络不处于 SQLite 写事务内。add/check/unfollow 操作锁跨调用保持，list 读取已提交快照。同 profile 忙立即失败。SIGINT/SIGTERM 终止当前等待，未提交事务回滚；BrokenPipe 在下一请求前/输出时检测。已提交页保留，不重放。
 
-socket I/O 默认 60 秒，不代表 DNS、总运行时间或宿主时限。网络/5xx 默认不重试，显式配置最多 2 次；429 解析 Retry-After 秒/日期，无效值保守 1 秒，最多一次退避、累计不超过 30 秒，重复/超长停止整轮请求。HTTPS 校验开启，API Authorization 仅发往固定 TikHub origin，不跟随 API 重定向。分享链接传给允许端点，不在本地展开网页或下载媒体。
+socket I/O 默认 60 秒，不代表 DNS、总运行时间或宿主时限。网络/5xx 默认不重试，显式配置最多 2 次；429 解析 Retry-After 秒/日期，无效值保守 1 秒，最多一次退避、累计不超过 30 秒，重复/超长停止整轮请求。HTTPS 校验开启，API Authorization 仅发往固定 TikHub origin，不跟随 API 重定向。抖音短链先按允许域名最多检查 5 次 HTTP 跳转，仅读取 Location；已识别作者主页后调用资料接口，作品链接调用分享作品接口。不下载网页正文或媒体，不执行脚本，不向分享域名发送 Authorization/Cookie。公开跳转与 API 共用限速，requests 仍只统计供应商请求。
 
 ## 适配证据
 
@@ -72,3 +72,11 @@ socket I/O 默认 60 秒，不代表 DNS、总运行时间或宿主时限。网�
 视频号 raw=false 的 username/videos/count/up_continue/last_buffer。up_continue=0 的非空页也是尾页，不沿用旧推断。作品大整数经 Python 精确解析后转字符串；每条新作至多一次详情、一次原链接，不为封面发请求，不读媒体/解密字段。只支持已核对的微信 sph 分享短链；未知主页形式报 SOURCE_LINK_INVALID。
 
 真实可见性、全部类型和字段变更仍需后续付费授权及实际使用观察。Windows 尚不支持；Linux/macOS 使用 fcntl，当前本机只验证 macOS。
+
+## v0.5.1：v0.5.0 使用反馈修复
+
+官方 API 请求增加浏览器 User-Agent 与 JSON Accept。非结构化 HTTP 403 返回 HTTP_BLOCKED（可重试、当前运行停止后续请求），不再把网关拦截误判为密钥无效；供应商明确 code=403 或 HTTP 401 仍为 AUTH_FAILED。错误输出不含上游正文。
+
+作者首页短链按重定向后的 /share/user/ 身份进入 handler_user_profile，避免误入 fetch_one_video_by_share_url；作品短链保留原分享解析端点。拒绝外部跳转、HTTP、循环、未知路径和超限跳转；添加仍只登记首页，不续页、不输出新增。
+
+本机公开作者短链解析成功，未读取密钥、未调用 TikHub。新增离线回归与临时安装/合成升级验证不代表 Grok 宿主网关恢复或真实增量验收通过。正式不可变 v0.5.0 包保留；补丁版本为 0.5.1，数据库 schema 仍为 1，无迁移。

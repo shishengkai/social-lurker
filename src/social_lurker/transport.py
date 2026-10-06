@@ -14,6 +14,9 @@ from .config import Config
 from .errors import LurkerError, require
 
 API_ROOT = "https://api.tikhub.io/api/v1"
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
 DY = "/douyin/app/v3/"
 WX = "/wechat_channels/v2/"
 ENDPOINTS = {
@@ -62,6 +65,17 @@ def send_http(method, url, headers, body, timeout):
         return Response(response.code, value, dict(response.headers))
 
 
+def send_redirect(method, url, headers, body, timeout):
+    """Read only response headers: no page/media download or automatic redirects."""
+    request = urllib.request.Request(url, headers=headers, method=method)
+    try:
+        response = urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        return Response(response.code, None, dict(response.headers))
+
+
 def retry_after(headers):
     value = next((v for k, v in (headers or {}).items() if k.lower() == "retry-after"), None)
     if not isinstance(value, str):
@@ -82,6 +96,7 @@ class Transport:
         config=Config(),
         *,
         send=send_http,
+        share_send=send_redirect,
         sleep=time.sleep,
         monotonic=time.monotonic,
         before_request=lambda: None,
@@ -89,11 +104,58 @@ class Transport:
         config.validate()
         self.secrets, self.stats, self.config = secrets, stats, config
         self.send, self.sleep, self.monotonic = send, sleep, monotonic
+        self.share_send = share_send
         self.before_request = before_request
         self.last_started = None
         self.rate_waited = 0.0
         self.rate_retry_used = False
         self.stopped = None
+
+    def pace(self):
+        self.before_request()
+        if self.last_started is not None:
+            delay = 1.0 / self.config.rps - (self.monotonic() - self.last_started)
+            if delay > 0:
+                self.sleep(delay)
+        self.before_request()
+        self.last_started = self.monotonic()
+
+    def redirect(self, url):
+        # Defense in depth for direct callers as well as the link resolver.
+        from urllib.parse import urlsplit
+
+        from .adapters.links import source_link
+
+        platform, validated = source_link(url)
+        require(
+            platform == "douyin" and urlsplit(validated).hostname == "v.douyin.com", "SOURCE_LINK_INVALID"
+        )
+        if self.stopped:
+            raise LurkerError(self.stopped)
+        self.pace()
+        try:
+            result = self.share_send(
+                "GET",
+                validated,
+                {"User-Agent": BROWSER_USER_AGENT, "Accept": "text/html,*/*;q=0.8"},
+                None,
+                self.config.timeout,
+            )
+        except (TimeoutError, socket.timeout):
+            raise LurkerError("REQUEST_TIMEOUT") from None
+        except urllib.error.URLError as cause:
+            raise LurkerError(
+                "REQUEST_TIMEOUT" if isinstance(cause.reason, TimeoutError) else "NETWORK_ERROR"
+            ) from None
+        except OSError:
+            raise LurkerError("NETWORK_ERROR") from None
+        if result.status in {403, 429}:
+            self.stopped = "HTTP_BLOCKED" if result.status == 403 else "RATE_LIMITED"
+            raise LurkerError(self.stopped)
+        if result.status >= 500:
+            raise LurkerError("NETWORK_ERROR")
+        require(result.status in {301, 302, 303, 307, 308}, "SOURCE_LINK_INVALID")
+        return next((v for k, v in (result.headers or {}).items() if k.lower() == "location"), None)
 
     def call(self, endpoint, params):
         require(endpoint in ENDPOINTS and isinstance(params, dict), "INPUT_INVALID")
@@ -102,25 +164,24 @@ class Transport:
         key = self.secrets.get_key()
         attempts = 0
         while True:
-            self.before_request()
-            if self.last_started is not None:
-                delay = 1.0 / self.config.rps - (self.monotonic() - self.last_started)
-                if delay > 0:
-                    self.sleep(delay)
-            self.before_request()
+            self.pace()
             method = ENDPOINTS[endpoint]
             url, body = API_ROOT + endpoint, None
             if method == "GET":
                 url += "?" + urlencode(params)
             else:
                 body = json.dumps(params, ensure_ascii=False).encode()
-            self.last_started = self.monotonic()
             self.stats["requests"] += 1
             try:
                 result = self.send(
                     method,
                     url,
-                    {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+                    {
+                        "Authorization": "Bearer " + key,
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "User-Agent": BROWSER_USER_AGENT,
+                    },
                     body,
                     self.config.timeout,
                 )
@@ -136,7 +197,9 @@ class Transport:
                 status = result.status
                 code = result.body.get("code") if isinstance(result.body, dict) else None
                 effective = code if status == 200 and type(code) is int and code != 200 else status
-                if effective in (401, 403):
+                if status == 403 and (type(code) is not int or code != 403):
+                    error = LurkerError("HTTP_BLOCKED")
+                elif effective in (401, 403):
                     error = LurkerError("AUTH_FAILED")
                 elif effective == 402:
                     error = LurkerError("QUOTA_UNAVAILABLE")

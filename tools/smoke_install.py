@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 from install import install
+from social_lurker import __version__
 from social_lurker.db import Database
 from social_lurker.locks import lock
 from social_lurker.profiles import FileRegistry
@@ -26,9 +27,9 @@ def fixture_upgrade(archive, path):
         for member in tar.getmembers():
             files[member.name] = tar.extractfile(member).read()
     manifest = json.loads(files.pop("manifest.json"))
-    manifest.update(version="0.5.1", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
+    manifest.update(version="0.5.2", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
     files["src/social_lurker/__init__.py"] = files["src/social_lurker/__init__.py"].replace(
-        b'"0.5.0"', b'"0.5.1"'
+        f'"{__version__}"'.encode(), b'"0.5.2"'
     )
     files["src/social_lurker/db.py"] = files["src/social_lurker/db.py"].replace(
         b"SCHEMA_VERSION = 1", b"SCHEMA_VERSION = 2"
@@ -71,7 +72,7 @@ def smoke():
             assert result.stderr == "" and "offline-fixture" not in result.stdout
             return result.stdout
 
-        assert run(["--version"]).strip() == "0.5.0"
+        assert run(["--version"]).strip() == __version__
         assert json.loads(run(["profile", "list"]).splitlines()[0])["payload"]["profiles"] == []
         run(["check"], code=2)
         run(["profile", "create", "--label", "娱乐"])
@@ -90,14 +91,14 @@ def smoke():
         with lock(install_root / "install.lock", code="MAINTENANCE_BUSY"):
             result = apply_package(install_root, target)
         assert result["changed"] and len(result["migration_results"]) == 2
-        assert current(install_root)[0]["version"] == "0.5.1"
-        assert run(["--version"]).strip() == "0.5.1"
+        assert current(install_root)[0]["version"] == "0.5.2"
+        assert run(["--version"]).strip() == "0.5.2"
         run(["--profile", "p0001", "list"])
         for profile in FileRegistry(data_root).list():
             db = Database(profile.db_path, profile.profile_id, create=False, supported_schema=2)
             assert db.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             db.close()
-        assert (install_root / "versions/0.5.0").is_dir()
+        assert (install_root / "versions" / __version__).is_dir()
         assert list((install_root / "backups").glob("*/completed.json"))
         return {
             "install": "passed",
