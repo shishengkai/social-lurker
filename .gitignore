@@ -15,3 +15,6 @@ state.sqlite*
 maintenance.json
 backups/
 logs/
+
+# macOS metadata is retained locally, outside versioned software
+.DS_Store

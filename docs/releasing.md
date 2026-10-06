@@ -1,14 +1,15 @@
-# 轻量软件发布流程
+# Git 交付与软件发布
 
-当前代码 0.3.2。设计 R1 是规范版本，软件 Release 是独立交付动作。本次开发不创建 commit、push、tag 或 GitHub Release。
+功能改动在 codex/ 分支开发，通过 PR 合回 main，普通 merge 保留工程历史。发布须有用户明确授权。代码、Git 交付、CI、软件发行和实际使用分别记账，不能互相代替。
 
-1. 完成本地检查和目标环境验收，核对仅有轻量三表/两个 skill。用户授权后提交并推送源码。
-2. 在该精确、干净 commit 上运行 `python tools/build_release.py --output <仓库外绝对目录>`。生成 `social-lurker-0.3.2.tar.gz` 和 `release-manifest.json`。构建器不向仓库写入，不自动发布。
-3. 由另行授权的发布流程创建指向同一 commit 的标准 vX.Y.Z tag。上传两个资产，核对下载包和清单摘要，并将正式 Release 锁定为 immutable；未锁定时安装器和升级器拒绝选用。不要在锁定后尝试覆盖资产。
-4. 从安装器重新读取该正式 Release，核对包内代码版本、清单版本、tag、Git commit、各文件摘要、schema 与 authority 全部对应，再执行干净环境真实安装验收。
+1. 核对适用指南、分支、工作区；按显式文件清单提交，不提交凭据、旧 .local 数据、虚拟环境、缓存或开发安装输出。
+2. 推送分支、创建 PR，等待 ubuntu/macos × Python 3.12/3.13 的 pytest、ruff、安装冒烟与构建检查全部成功，再普通 merge。
+3. 同步 main，核对远端/本地合并 SHA。执行 `uv run python tools/build_release.py --output <目录>`，禁止使用 --development 发布。
+4. 在同一精确 SHA 创建 vX.Y.Z tag。正式 manifest 为 product=social-lurker、distribution=cli、source_state=clean，Python/schema 与逐文件 SHA256 有效。
+5. 仓库须启用 immutable releases。先创建 draft，上传 social-lurker-cli-VERSION.tar.gz 与 social-lurker-cli-VERSION.manifest.json，复核上传摘要后发布，不在发布后补资产。
+6. 核对 Release 非 draft/非 prerelease、immutable=true、tag 精确 SHA、GitHub 资产摘要与本地一致。下载正式资产，在独立临时目录安装并验证版本、profile/config 和显式 upgrade check/apply 无变化。
+7. 将实际 PR、CI、Release、资产与未验证边界记录到 brain；不自动升级目标 Bot 或旧实例。
 
-清单包含 authority=github.com/shishengkai/social-lurker、product=social-lurker-lightweight、version、channel=stable、protocol=1、schema_version=1、source_commit 和逐文件 SHA-256。外部 release-manifest.json 包含 manifest 对象与压缩包 SHA-256；包内 manifest.json 不包含自己的摘要，因此没有自引用 SHA 循环。归档内容排序、时间戳与 gzip mtime 固定，清单和包摘要可重建。
+当前 v0.5.0 发布入口为 https://github.com/shishengkai/social-lurker/releases/tag/v0.5.0 。docs/validation.md/json 保存发布前的本地验收快照，后续结果以发行说明和 brain CURRENT 为准。
 
-只打包标准库 Python 代码、schema.sql、两个 skill、稳定 run.py 与 LICENSE，不带数据库、.env、测试样本、日志、备份、第三方媒体二进制或虚拟环境。
-
-发现逻辑排除 draft/prerelease/非标准 tag，按 SemVer 选最高正式版本；最高版本不可变性、清单或 commit 验证失败时停止，不回退到旧版。未来更改稳定 launcher 字节或 schema 时需要独立受控升级设计，当前版本拒绝未知迁移。正常任务自动检查失败安静结束，用户主动检查则报告原因。
+真实抖音/视频号接口及 Grok 使用验收仍需独立执行。合成 0.5.1/schema2 仅验证迁移机制，不是已发布版本；0.5.0 不迁移旧产品库。付费调用、部署、停止或清理旧实例不因发布自动授权。

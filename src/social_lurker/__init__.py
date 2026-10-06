@@ -1,3 +1,3 @@
-"""Independent per-Bot publication monitoring. No content processing."""
+"""social-lurker: metadata CLI, independent of notification hosts."""
 
-__version__ = "0.3.6"
+__version__ = "0.5.0"
