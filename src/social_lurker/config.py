@@ -6,9 +6,9 @@ from typing import Protocol
 from .errors import LurkerError, require
 from .util import atomic_json, read_json
 
-DEFAULT_INSTALL = Path.home() / ".local/opt/social-lurker-cli"
-DEFAULT_DATA = Path.home() / ".local/share/social-lurker-cli"
-DEFAULT_CREDENTIALS = Path.home() / ".config/social-lurker-cli/credentials.json"
+DEFAULT_INSTALL = Path.home() / ".local/opt/social-lurker"
+DEFAULT_DATA = Path.home() / ".local/share/social-lurker"
+DEFAULT_CREDENTIALS = Path.home() / ".config/social-lurker/credentials.json"
 
 
 def valid_key(key):

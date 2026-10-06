@@ -17,6 +17,8 @@ API_ROOT = "https://api.tikhub.io/api/v1"
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 )
+USER_INFO = "/tikhub/user/get_user_info"
+ENDPOINT_INFO = "/tikhub/user/get_endpoint_info"
 DY = "/douyin/app/v3/"
 WX = "/wechat_channels/v2/"
 ENDPOINTS = {
@@ -34,6 +36,8 @@ ENDPOINTS.update(
         for name in ("fetch_video_detail", "fetch_user_profile", "fetch_user_videos", "fetch_video_share_url")
     }
 )
+
+ENDPOINTS.update({USER_INFO: "GET", ENDPOINT_INFO: "GET"})
 
 
 @dataclass(frozen=True)
@@ -106,6 +110,7 @@ class Transport:
         self.send, self.sleep, self.monotonic = send, sleep, monotonic
         self.share_send = share_send
         self.before_request = before_request
+        self.minimum_interval = 0.0
         self.last_started = None
         self.rate_waited = 0.0
         self.rate_retry_used = False
@@ -114,7 +119,7 @@ class Transport:
     def pace(self):
         self.before_request()
         if self.last_started is not None:
-            delay = 1.0 / self.config.rps - (self.monotonic() - self.last_started)
+            delay = max(self.minimum_interval, 1.0 / self.config.rps) - (self.monotonic() - self.last_started)
             if delay > 0:
                 self.sleep(delay)
         self.before_request()
@@ -157,11 +162,52 @@ class Transport:
         require(result.status in {301, 302, 303, 307, 308}, "SOURCE_LINK_INVALID")
         return next((v for k, v in (result.headers or {}).items() if k.lower() == "location"), None)
 
+    def check_credentials(self):
+        """Two bounded requests; authenticate only after confirming zero pricing."""
+        self.minimum_interval = 1.0  # Account endpoint limit: at most one request per second.
+        self.secrets.get_key()  # Invalid local configuration must not contact the server.
+        pricing = self._request(
+            ENDPOINT_INFO, {"endpoint": "/api/v1" + USER_INFO}, authenticate=False, retry=False
+        ).get("data")
+        require(
+            isinstance(pricing, dict)
+            and pricing.get("endpoint_uri") == "/api/v1" + USER_INFO
+            and type(pricing.get("endpoint_cost")) in (int, float)
+            and pricing["endpoint_cost"] == 0,
+            "ENDPOINT_NOT_FREE",
+        )
+        account = self._request(USER_INFO, {}, retry=False)
+        key_data, user_data = account.get("api_key_data"), account.get("user_data")
+        require(isinstance(key_data, dict) and isinstance(user_data, dict))
+        require(
+            type(key_data.get("api_key_status")) is int
+            and type(user_data.get("is_active")) is bool
+            and type(user_data.get("account_disabled")) is bool
+            and type(user_data.get("email_verified")) is bool
+        )
+        require(
+            key_data["api_key_status"] == 1
+            and user_data["is_active"]
+            and not user_data["account_disabled"]
+            and user_data["email_verified"],
+            "AUTH_FAILED",
+        )
+        return {"credential_check": "passed", "endpoint_cost": 0, "business_api_tested": False}
+
     def call(self, endpoint, params):
+        result = self._request(endpoint, params)
+        data = result.get("data")
+        require(isinstance(data, dict))
+        if "status_code" in data:
+            require(type(data["status_code"]) is int and data["status_code"] == 0)
+        return data
+
+    def _request(self, endpoint, params, *, authenticate=True, retry=True):
         require(endpoint in ENDPOINTS and isinstance(params, dict), "INPUT_INVALID")
         if self.stopped:
             raise LurkerError(self.stopped)
-        key = self.secrets.get_key()
+        require(authenticate or endpoint == ENDPOINT_INFO, "INPUT_INVALID")
+        key = self.secrets.get_key() if authenticate else None
         attempts = 0
         while True:
             self.pace()
@@ -177,7 +223,7 @@ class Transport:
                     method,
                     url,
                     {
-                        "Authorization": "Bearer " + key,
+                        **({"Authorization": "Bearer " + key} if key is not None else {}),
                         "Content-Type": "application/json",
                         "Accept": "application/json",
                         "User-Agent": BROWSER_USER_AGENT,
@@ -205,7 +251,7 @@ class Transport:
                     error = LurkerError("QUOTA_UNAVAILABLE")
                 elif effective == 429:
                     delay = retry_after(result.headers)
-                    if not self.rate_retry_used and 0 <= delay <= 30 - self.rate_waited:
+                    if retry and not self.rate_retry_used and 0 <= delay <= 30 - self.rate_waited:
                         self.rate_retry_used = True
                         self.rate_waited += delay
                         self.sleep(delay)
@@ -215,15 +261,11 @@ class Transport:
                     error = LurkerError("NETWORK_ERROR")
                 else:
                     require(status == 200 and type(code) is int and code == 200)
-                    data = result.body.get("data")
-                    require(isinstance(data, dict))
-                    if "status_code" in data:
-                        require(type(data["status_code"]) is int and data["status_code"] == 0)
-                    return data
+                    return result.body
             if error.global_stop:
                 self.stopped = error.code
                 raise error
-            if attempts >= self.config.retries:
+            if not retry or attempts >= self.config.retries:
                 raise error
             attempts += 1
             self.sleep(min(attempts, 2))

@@ -17,6 +17,7 @@ social-lurker [GLOBAL_OPTIONS] profile create --label=中文名
 social-lurker [GLOBAL_OPTIONS] profile list
 social-lurker [GLOBAL_OPTIONS] config set-key [--stdin]
 social-lurker [GLOBAL_OPTIONS] config status
+social-lurker [GLOBAL_OPTIONS] config check
 social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] add LINK
 social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] list [--all]
 social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] unfollow --platform PLATFORM --author-id AUTHOR_ID
@@ -80,3 +81,9 @@ socket I/O 默认 60 秒，不代表 DNS、总运行时间或宿主时限。网�
 作者首页短链按重定向后的 /share/user/ 身份进入 handler_user_profile，避免误入 fetch_one_video_by_share_url；作品短链保留原分享解析端点。拒绝外部跳转、HTTP、循环、未知路径和超限跳转；添加仍只登记首页，不续页、不输出新增。
 
 本机公开作者短链解析成功，未读取密钥、未调用 TikHub。新增离线回归与临时安装/合成升级验证不代表 Grok 宿主网关恢复或真实增量验收通过。正式不可变 v0.5.0 包保留；补丁版本为 0.5.1，数据库 schema 仍为 1，无迁移。
+
+## 免费凭据认证检查（v0.5.2）
+
+`config check` 无 profile、无业务数据库操作。验证本地 SecretSource 后，GET 公开 `/tikhub/user/get_endpoint_info`，要求 data.endpoint_uri 精确匹配 `/api/v1/tikhub/user/get_user_info`，数值 endpoint_cost=0（不接受字符串或 bool）。否则 ENDPOINT_NOT_FREE，且不发送认证请求。随后 GET 账户接口，使用根级 api_key_data/user_data，校验 key 状态 1、账户启用/未禁用且邮箱已验证。账户元信息不进入输出。
+
+成功 result 为 credential_check=passed、credential_source=file|environment、endpoint_cost=0、business_api_tested=false；complete 延用既有协议，requests=2，作者/页/作品计数均为零。认证检查无自动重试或 429 重试，间隔至少一秒；超时、认证、网关错误沿用 Transport 类型。输出关闭、中断仍停止后续请求。价格检查成功不证明作品端点权限或业务可用。现有 v0.5.1 正式包没有此命令。

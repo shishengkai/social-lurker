@@ -58,13 +58,13 @@ def make_package(tmp, version="0.5.0", schema=1, *, overrides=None, bad_sql=Fals
     }
     manifest.update(overrides or {})
     manifest_bytes = (json.dumps(manifest, sort_keys=True) + "\n").encode()
-    archive = tmp / f"social-lurker-cli-{version}.tar.gz"
+    archive = tmp / f"social-lurker-{version}.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         for name, data in {**files, "manifest.json": manifest_bytes}.items():
             info = tarfile.TarInfo(name)
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
-    manifest_path = tmp / f"social-lurker-cli-{version}.manifest.json"
+    manifest_path = tmp / f"social-lurker-{version}.manifest.json"
     manifest_path.write_bytes(manifest_bytes)
     return archive, manifest_path
 
@@ -445,3 +445,30 @@ def test_additive_migration_remains_writable_after_switch(installed, tmp_path):
     assert result.returncode == 0
     with sqlite3.connect(profile.db_path) as db:
         assert db.execute("SELECT COUNT(*) FROM works").fetchone()[0] == 2
+
+
+@pytest.mark.parametrize("version", ["0.5.0", "0.5.1", "0.5.2"])
+def test_asset_names_and_historical_compatibility(tmp_path, version):
+    client = FakeGitHub(tmp_path / "new", version=version)
+    assert candidate(client)["asset"]["name"] == f"social-lurker-{version}.tar.gz"
+    renamed = {}
+    for asset in client.items[0]["assets"]:
+        old_name = asset["name"]
+        name = old_name.replace("social-lurker-", "social-lurker-cli-", 1)
+        asset["name"] = name
+        asset["browser_download_url"] = f"https://github.com/{REPO}/releases/download/v{version}/{name}"
+        renamed[name] = client.sources[old_name]
+    client.sources = renamed
+    if version == "0.5.2":
+        with pytest.raises(LurkerError):
+            candidate(client)
+    else:
+        assert candidate(client)["asset"]["name"] == f"social-lurker-cli-{version}.tar.gz"
+
+
+def test_new_default_paths():
+    from social_lurker.config import DEFAULT_CREDENTIALS, DEFAULT_DATA, DEFAULT_INSTALL
+
+    assert DEFAULT_INSTALL == Path.home() / ".local/opt/social-lurker"
+    assert DEFAULT_DATA == Path.home() / ".local/share/social-lurker"
+    assert DEFAULT_CREDENTIALS == Path.home() / ".config/social-lurker/credentials.json"

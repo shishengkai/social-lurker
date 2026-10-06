@@ -39,9 +39,9 @@ def build(root, output, *, development=False):
         "migrations": {},
         "files": {p.relative_to(root).as_posix(): digest(p) for p in files},
     }
-    path = output / f"social-lurker-cli-{__version__}.manifest.json"
+    path = output / f"social-lurker-{__version__}.manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True) + "\n")
-    archive = output / f"social-lurker-cli-{__version__}.tar.gz"
+    archive = output / f"social-lurker-{__version__}.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         for file in files:
             tar.add(file, arcname=file.relative_to(root).as_posix(), recursive=False)

@@ -2,7 +2,7 @@
 
 Python 3.12+、macOS/Linux。0.5.0 的 [软件发行页](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.0) 提供固定 tag/SHA 的 CLI 包与 manifest，不安装进既有 0.3.6 实例。安装器只接受空白安装/数据目录，先拒绝旧目录再创建锁；不读取旧 settings/.env 或数据库。
 
-默认安装 ~/.local/opt/social-lurker-cli、数据 ~/.local/share/social-lurker-cli、凭据 ~/.config/social-lurker-cli/credentials.json。安装可传 --install-root/--data-root；稳定入口绑定安装时的数据根，全部 profile 都纳入升级。配置通过 --credentials-file 改路径。凭据 JSON 字段 tikhub_api_key；config set-key 隐藏输入或 --stdin 单行，原子写入 0600。文件配置项优先，未配置项才读 TIKHUB_API_KEY，空/损坏文件报错。
+默认安装 ~/.local/opt/social-lurker、数据 ~/.local/share/social-lurker、凭据 ~/.config/social-lurker/credentials.json。安装可传 --install-root/--data-root；稳定入口绑定安装时的数据根，全部 profile 都纳入升级。配置通过 --credentials-file 改路径。凭据 JSON 字段 tikhub_api_key；config set-key 隐藏输入或 --stdin 单行，原子写入 0600。文件配置项优先，未配置项才读 TIKHUB_API_KEY，空/损坏文件报错。
 
 ```text
 INSTALL_ROOT/bin/social-lurker       可执行壳，锁定安装所用 Python
@@ -23,7 +23,7 @@ DATA_ROOT/profiles/p0001/operation.lock
 
 ```sh
 uv run python tools/build_release.py --output dist/cli-0.5.0
-uv run python install.py --package dist/cli-0.5.0/social-lurker-cli-0.5.0.tar.gz --install-root /ABS/NEW_INSTALL --data-root /ABS/NEW_DATA
+uv run python install.py --package dist/cli-0.5.0/social-lurker-0.5.0.tar.gz --install-root /ABS/NEW_INSTALL --data-root /ABS/NEW_DATA
 /ABS/NEW_INSTALL/bin/social-lurker profile create --label=娱乐
 /ABS/NEW_INSTALL/bin/social-lurker config set-key
 ```
@@ -45,3 +45,23 @@ check 下载并验证 manifest 摘要及包资产声明；apply --version VERSIO
 全部库通过后原子切换 current.json，作为唯一提交点。提交点前失败恢复全部验证过的备份；提交点后只向前核验归档，保留新事实。启动发现未完成计划时恢复同一已授权目标，不重新选择/下载版本。计划/备份损坏、指针不匹配时保持维护，业务不可写。旧版本与备份保留。
 
 本地合成 0.5.1/schema2 用于测试机制，该编号仅为 fixture，没有发布或安装到实际实例。Grok 日程、通知及旧实例转换均在本轮范围之外。
+
+## 目录与资产更名（v0.5.2）
+
+新默认目录统一使用 social-lurker；不自动探测、移动、合并或删除原目录。已有入口绑定 current.json 中的原数据根，仍可使用，凭据通过 --credentials-file 显式指定原文件。源码调用也可用 --install-root/--data-root 指向已知安装。
+
+新资产使用 social-lurker-VERSION.tar.gz/manifest.json；新升级器兼容 0.5.0/0.5.1 历史资产名。旧升级器不认识新资产，首次跨命名升级需从用户授权版本取得并校验新源码与正式包，在原安装根执行新代码的 apply_package（安装器不能覆盖非空目录）。示例在已审阅新源码根运行，PACKAGE 为已校验正式包、ROOT 为原安装根：
+
+```sh
+PYTHONPATH=src python3.12 - "$ROOT" "$PACKAGE" <<'PY'
+import sys
+from pathlib import Path
+from social_lurker.locks import lock
+from social_lurker.upgrade import apply_package
+root = Path(sys.argv[1]).expanduser().resolve()
+with lock(root / "install.lock", code="MAINTENANCE_BUSY"):
+    apply_package(root, Path(sys.argv[2]).resolve())
+PY
+```
+
+此工具沿用备份、全 profile 核验和原子切换，不改变原目录/数据根/凭据。只在用户授权升级且新正式包可用时执行；本次仅在临时目录验证。
