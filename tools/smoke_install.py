@@ -1,83 +1,115 @@
-#!/usr/bin/env python3
-"""Offline preview installation, stable entry, repeat and Bot isolation in a temporary directory."""
+"""Offline install/upgrade smoke in disposable directories; no provider or host operations."""
 
+import hashlib
+import io
 import json
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
+from install import install
+from social_lurker.db import Database
+from social_lurker.locks import lock
+from social_lurker.profiles import FileRegistry
+from social_lurker.upgrade import apply_package, check, current
+from tools.build_release import build
 
 
-def run(*args):
-    p = subprocess.run([sys.executable, *map(str, args)], capture_output=True, text=True, timeout=60)
-    if p.returncode:
-        raise RuntimeError(p.stdout)
-    response = json.loads(p.stdout)
-    assert response["ok"], response
-    return response["result"]
+def fixture_upgrade(archive, path):
+    files = {}
+    with tarfile.open(archive) as tar:
+        for member in tar.getmembers():
+            files[member.name] = tar.extractfile(member).read()
+    manifest = json.loads(files.pop("manifest.json"))
+    manifest.update(version="0.5.1", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
+    files["src/social_lurker/__init__.py"] = files["src/social_lurker/__init__.py"].replace(
+        b'"0.5.0"', b'"0.5.1"'
+    )
+    files["src/social_lurker/db.py"] = files["src/social_lurker/db.py"].replace(
+        b"SCHEMA_VERSION = 1", b"SCHEMA_VERSION = 2"
+    )
+    files["migrations/1.sql"] = b"ALTER TABLE works ADD COLUMN smoke_fixture TEXT;"
+    manifest["files"] = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
+    files["manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
+    with tarfile.open(path, "w:gz") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return path
 
 
-def main():
-    with tempfile.TemporaryDirectory(prefix="lurker-r1-smoke-") as folder:
-        a = Path(folder).resolve() / "bot-a"
-        b = Path(folder).resolve() / "bot-b"
-        first = run(
-            ROOT / "install.py",
-            "--instance",
-            a,
-            "--bot-id",
-            "fixture-a",
-            "--allow-working-tree",
-            "--system-only",
-        )
-        assert (
-            first["created"]
-            and first["star_event"] == "install_completed"
-            and first["setup"]["mode"] == "foreground_only"
-        )
-        (a / ".env").write_text("TIKHUB_API_KEY=fixture-preserve\n")
-        second = run(
-            ROOT / "install.py",
-            "--instance",
-            a,
-            "--bot-id",
-            "fixture-a",
-            "--allow-working-tree",
-            "--system-only",
-        )
-        assert not second["created"] and second["star_event"] is None
-        assert (a / ".env").read_text() == "TIKHUB_API_KEY=fixture-preserve\n"
-        third = run(
-            ROOT / "install.py",
-            "--instance",
-            b,
-            "--bot-id",
-            "fixture-b",
-            "--allow-working-tree",
-            "--system-only",
-        )
-        assert (
-            third["instance_id"] != first["instance_id"]
-            and "fixture-preserve" not in (b / ".env").read_text()
-        )
-        status = run(a / "run.py", "--instance", a, "--json", '{"protocol":1}', "status")
-        assert status["updates"] == {} and status["watches"] == []
-        assert len(list((a / f"app/{first['version']}/skills").glob("*/SKILL.md"))) == 2
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "version": status["version"],
-                    "instances": 2,
-                    "repeat_preserved_credentials": True,
-                    "real_api_calls": 0,
-                    "host_messages": 0,
-                }
+class NoReleases:
+    def releases(self):
+        return []
+
+
+def smoke():
+    with tempfile.TemporaryDirectory(prefix="social-lurker-smoke-") as tmp:
+        root = Path(tmp)
+        # Spaces deliberately exercise the installed executable's quoting and Python selection.
+        install_root, data_root = root / "新安装 with spaces", root / "新数据 with spaces"
+        archive = build(ROOT, root / "packages", development=True)
+        install(archive, install_root, data_root)
+        entry = install_root / "bin/social-lurker"
+        credentials = root / "credentials.json"
+
+        def run(args, code=0, stdin=None):
+            result = subprocess.run(
+                [str(entry), "--credentials-file", str(credentials), *args],
+                input=stdin,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
-        )
+            assert result.returncode == code, result.stdout
+            assert result.stderr == "" and "offline-fixture" not in result.stdout
+            return result.stdout
+
+        assert run(["--version"]).strip() == "0.5.0"
+        assert json.loads(run(["profile", "list"]).splitlines()[0])["payload"]["profiles"] == []
+        run(["check"], code=2)
+        run(["profile", "create", "--label", "娱乐"])
+        run(["profile", "create", "--label", "知识"])
+        run(["config", "set-key", "--stdin"], stdin="offline-fixture\n")
+        assert credentials.stat().st_mode & 0o777 == 0o600
+        for pid in ("p0001", "p0002"):
+            assert (
+                json.loads(run(["--profile", pid, "--format", "json", "check"]))["completion"]["summary"][
+                    "requests"
+                ]
+                == 0
+            )
+        assert check(install_root, NoReleases())["latest_version"] is None
+        target = fixture_upgrade(archive, root / "synthetic-upgrade.tar.gz")
+        with lock(install_root / "install.lock", code="MAINTENANCE_BUSY"):
+            result = apply_package(install_root, target)
+        assert result["changed"] and len(result["migration_results"]) == 2
+        assert current(install_root)[0]["version"] == "0.5.1"
+        assert run(["--version"]).strip() == "0.5.1"
+        run(["--profile", "p0001", "list"])
+        for profile in FileRegistry(data_root).list():
+            db = Database(profile.db_path, profile.profile_id, create=False, supported_schema=2)
+            assert db.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            db.close()
+        assert (install_root / "versions/0.5.0").is_dir()
+        assert list((install_root / "backups").glob("*/completed.json"))
+        return {
+            "install": "passed",
+            "explicit_profiles": "passed",
+            "credentials_stdin": "passed",
+            "no_release_discovery": "passed",
+            "synthetic_upgrade_and_migration": "passed",
+            "provider_requests": 0,
+            "directory": "disposable",
+            "released_software": False,
+        }
 
 
 if __name__ == "__main__":
-    main()
+    print(json.dumps(smoke(), ensure_ascii=False))

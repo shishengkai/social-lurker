@@ -1,149 +1,24 @@
-# 轻量 R1 验证记录
+# 0.5.0 本地验收结果（2026-10-07）
 
-当前：0.3.6 / [0834a3b](https://github.com/shishengkai/social-lurker/commit/0834a3ba4975e270add15cdbd939cc8d7bab6599) 已交付并独立核验，131 项本地测试、ruff/格式、双实例安装冒烟及 [Python 3.12/3.13 CI](https://github.com/shishengkai/social-lurker/actions/runs/34754915081) 通过。19:00 首轮正式业务四位作者检查成功，但发现旧故障误提醒，修复后的正式自动静默仍待验收。
+这是 Git 交付前的本地验收快照，软件版本 0.5.0，当时基准为旧 0.3.6 提交 30bdf9c33c0018f2a4910480e95c23f65f8d5c68。机器可读快照与当时开发包摘要见 validation.json。后续 Git/CI/正式资产验收见 [v0.5.0 Release](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.0) 和关联 brain 的 CURRENT，下面的未执行项仅描述该快照时点。
 
-## 2026-09-13 19:00 正式业务与旧故障提醒
-
-原生任务 automation-1789242387328 已自动执行。内部摘要及独立 SQLite 核对：四位 active 作者均 last_success_at 更新、error_code=null，4 页、errors=[]，小Lin说跳过 2 条合作作品；每页 not_all_new。请求预留从启用前独立基线 27 增至 31，last_automatic_slot=1789297200，作品账本仍 67 ignored/3 sent（t0s26、t35s0、t35s1），无新作品、无作品重发，api_holds=[]。
-
-19:07:37 对话新增 PAGE_IDENTITY_INVALID 提醒 t43s2。实际 incident 2d6fbefc-aa8f-4ab6-8507-68e98ba67a2e 的 created_at=1789282268，按故障码与关注 ID 的键核对属于 AI创变工坊此前的故障；并非本轮失败。它在作者恢复成功后仍为 pending，直到自动 dispatch 才被发出并登记 last_sent_at=1789297668。送达记录必须保留。证据为实例 logs/acceptance-automatic-business-20260913.json、实际数据库和桌面对话；该日志中的约数 before 提示不作请求前基线。
-
-0.3.6 补齐正式设计的恢复语义：完整扫描成功后填写 resolved_at，pending 转 resolved；许可前按持久成功记录核对旧快照，不能只凭 error_code 清空认定恢复。sending/unknown/sent 保留送达事实，已恢复提醒的 not_sent 不再排队；恢复后复发创建新 ID，旧回执可继续登记。只处理对应作者扫描故障，不清 API 门禁或其他作者提醒。新增 11 项回归，包含真实误报流程的修复前失败与修复后通过，容量与回执保全。升级测试改为从当前版本生成下一版本，避免测试版本与正式版本碰撞。
-
-19:38 前已通过固定 commit 预览入口交付 0.3.6。独立核验 app/0.3.1–0.3.6 全部文件集合/摘要、备份 4aedafb8-7402-40da-b510-53a411ea0679 摘要、当前与备份 SQLite integrity_check=ok，watches/updates/完整 incidents 与本次备份一致；t43s2 的 sent/ID/时间原样保留，maintenance.json 不存在。稳定入口 setup check=automatic_ready、missing=[]，routine active/requested_active/observed_active/synchronized 全 true；原生 UI 读回已启用、原九槽及完整 --instance 指令。两平台当前 r1.4 近期页证据保留，images=false。凭据摘要一致由交付日志报告，未输出值。证据为 logs/acceptance-upgrade-0.3.6.json（0600）和独立终端/UI 核对。
-
-131 项本地回归及安装冒烟通过。首次 CI 的测试已过，打包因 uv.lock 未同步版本导致 SOURCE_DIRTY；d27be2c 仅修正锁文件版本，Python 3.12/3.13 全部检查与固定版本打包通过。已核对其与实装 0834a3b 的运行文件逐字节一致，不为锁文件再次改动实例版本。
-
-没有前台补跑、额外数据请求、新 Grok 测试任务或作品发送；请求仍 31、last_automatic_slot 仍 19:00。首轮成功检查不等于无更新静默已经通过。19:20 临时 Codex 续验已停用，Grok 正常日程保留，下一槽 21:00；修复后真实自动静默尚待观察。
-
-## 原生静默通过与正式日程启用
-
-2026-09-13 手机准备确认后，独立临时探针 sl-quiet-20260913-1655 在原生运行历史显示成功，但实际文件只包含 CLI exit_code=2、缺少必需的 --instance 参数。只读观察器于 16:58:57 读到该失败；不能把任务层成功当成程序成功。用户报告这一轮观察窗出现手机新通知，具体内容和来源尚未确认，第一轮不计静默通过。失败文件保留，临时任务已暂停并删除。
-
-修正为完整绝对入口与 --instance 后，独立任务 sl-quiet-20260913-1706 计划 17:06，实际 envelope observed_at=1789290827，即 **17:13:47+08:00**，文件修改时间为 17:13:47.739957。直接读取实际 stdout：ok=true、protocol=1、kind=host_wake_probe、version=0.3.5、probe_id 匹配，data_requests=0、messages_sent=0，权限 0600。原生 UI 为定时运行成功；只读观察器没有调用 probe，只等待并读取文件。
-
-两轮前后账本均为 67 ignored、3 sent，requests_reserved=26、last_automatic_slot=null。Mac Grok 聊天置于后台，第二轮没有新增自动对话；用户明确确认 17:06–17:15 的 iPhone 没有新通知。仅第二轮作为原生唤醒和静默证据；7 分 47 秒的调度延迟不代表准点保证，也不证明完整业务检查已执行。两个临时任务最终都已删除，原生列表仅保留正式任务。
-
-随后按真实证据登记 native/quiet=true、images=false。只对布鱼AI做一次当前稳定入口前台 poll：pages=1、errors=[]，requests_reserved 26→27，登记 wechat_channels:default / metadata-r1.4 / recent_pages_verified；没有重试、领取许可或发送作品。本次成功不消除上游间歇失败的历史事实。
-
-正式 automation-1789242387328 的指令补全 /usr/bin/python3 -I -B、绝对 run.py 与 --instance，再保留 routine poll → routine next、版本感知 skill、严格回执、禁止前台降级和无过程消息规则。能力缺项为空后，原生启用并查询、setup bind 同步真实状态；独立读取 settings 和稳定入口 setup check：automatic_ready、missing=[]、active/requested_active/observed_active/synchronized 均 true，两平台当前来源均 recent_pages_verified。日程仍为 Asia/Shanghai 07/09/11/13/15/17/19/21/23；没有补跑已过的 17 点槽。
-
-启用后的独立账本基线仍为 67 ignored、3 sent、请求计数 27、last_automatic_slot=null。因此当前结论是**正式日程已启用，等待 19:00 槽的首轮完整自动业务验收**。首轮结束将仅内部保存脱敏摘要，不发验收完成消息；19:20 的一次续验已安排。
-
-实例证据：logs/native-probe-sl-quiet-20260913-1655.json、native-probe-sl-quiet-20260913-1706.json、acceptance-native-probes-20260913.json、acceptance-post-probe-20260913.json。首轮业务日志 acceptance-automatic-business-20260913.json 尚待真实运行生成。软件执行包未改版，没有额外作品消息或媒体操作。
-
-## 新分享、真实通知与合作作品规则
-
-新的抖音 Lt6u8n9FNLo 与视频号 AnkzHamJ5q，分别解析为“燕三嘤嘤嘤”“布鱼AI”。首次列表尝试分别返回 UPSTREAM_TEMPORARY、WECHAT_LIST_UNAVAILABLE；各平台停止后，有界诊断返回有效的 20 条、15 条列表，作者身份均匹配。随后实际稳定入口各首次 poll 一页成功、test-latest 及必要字段补全成功。这证明本次前台流程可用，不代表上游间歇故障已消失。
-
-两条文字通知在桌面实际可见：t35s0“乌克兰内斗”（16:03:43）、t35s1“一个Skill做出访谈金句长图”（16:04:05）。直接读取 SQLite 核对两个消息 ID 均为 sent，47 ignored、3 sent，queued/sending/unknown=0，requests_reserved=24，last_automatic_slot=null。0.3.4 安装包和 SQLite 完整性再次通过。第一条回执曾因字段名错误被拒绝，修正同一 attempt 的登记后成功，没有重新发送；0.3.5 skill 补充回执字段与修正方式。消息 UI 时间与账本记录的 sent_at 分别保留，不把登记时间当作精确的 UI 发出时间。
-
-已提前请用户准备手机，并将 Mac 聊天移到后台做推送对照。用户后来确认：通知中心收到“一个Skill”作品通知及“0.3.5”完成消息，没有找到“乌克兰内斗”的作品通知；聊天里两条作品均可见，点击原链接均进入正确作品。两条手机链接按用户实测通过；系统推送通道至少有成功对照，不能把抖音那条也记成已确认推送。此前 iPhone 封面失败结论继续成立；本轮均为文字。正式任务继续暂停。
-
-“小Lin说”22 条列表中只有 20 条的主要作者匹配；另外 2 条具有合作信息，合作名单均明确包含小Lin说，已直接只读核对原始结构。用户确认**只通知本人发布，跳过别人主发的合作作品**。0.3.5 仅过滤这种已确认关系，未知外来作者和根身份冲突仍拒绝；跳过项不入库、不通知，含跳过项的页不能据过滤后的剩余集合触发续页。仅剩合作项时记录本策略的有效边界，不伪造平台末尾。正常列表与接口恢复验证复用同一解析规则。12 项新增回归覆盖这些边界及试发选择。
-
-实例日志为 logs/acceptance-new-shares-20260913.json、logs/acceptance-list-diagnostics-20260913.json、logs/acceptance-prepared-20260913.json、logs/acceptance-delivery-20260913.json。原始响应只留在该实例私有诊断目录（0600），不复制到公开仓库。
-
-16:19，0.3.5 交付完成。小Lin说实际 poll pages=1、excluded_collaborations=2，登记 douyin:normal / metadata-r1.4 / recent_pages_verified；布鱼AI pages=0 / WECHAT_LIST_UNAVAILABLE，停止且未重试，视频号保留旧 r1.3 证据，在当前适配器下仍未验证。两条已 sent 的前台 dispatch next 均返回 null，没有调用发送工具。计数 24→26，67 ignored、3 sent。
-
-独立验证 app/0.3.1–0.3.5 全部文件集合及摘要，当前 SHA 为 8ed3403；备份 97de03f5-f5df-41a7-b28a-66a0996d5c84 的摘要、当前和备份 SQLite 完整性通过，备份中的全部既有 updates 在当前库逐行保持相同。t0s26、t35s0、t35s1 均保留，maintenance.json 不存在，last_automatic_slot=null。升级前后 watches/updates 相等及凭据摘要不变由交付日志报告；poll 后作者扫描状态变化是正常业务写入。quiet/native/images/routine_active 均仍 false。原日程和完整指令保留由 Bot 查询报告，实际界面继续显示正式任务暂停。证据为 logs/acceptance-upgrade-0.3.5.json。
-
-另建暂停的独立探针 sl-quiet-20260913-1635，原生界面读回日期限定日程、16:35–16:50 执行窗、仅 routine probe、禁发消息和重复保护。手机未在排期前确认离开 Grok 聊天，因此没有启用。16:35 排期到点后取消并删除，实际界面只剩暂停的正式任务。本次不产生原生唤醒或强静默通过的证据；清理日志为 logs/cancelled-probe-sl-quiet-20260913-1635.json。
-
-## 前一阶段交付基线
-
-2026-09-13，0.3.3 / [f600198](https://github.com/shishengkai/social-lurker/commit/f600198fbfa16ac6dd123f3573d6a0f368a04155) 已交付并独立核验安装包与数据库完整性。0.3.4 / [5acc688](https://github.com/shishengkai/social-lurker/commit/5acc68834ed7c0d911a1e7209f003555875a0602) 已推送，**108 项 pytest、ruff/格式、编译和安装冒烟通过**，[Python 3.12/3.13 GitHub CI](https://github.com/shishengkai/social-lurker/actions/runs/34744693599) 成功。0.3.4 已完成原实例升级并独立验证安装包、备份及数据库完整性。升级后一次真实列表检查成功；完整业务验收仍未通过。
-
-## 0.3.3–0.3.4 修复与白天续验
-
-2026-09-13 14:23，原 0.3.2 实例的一次稳定前台 poll 在约 3135 ms 内返回 pages=1、not_all_new、errors 为空，账本未新增作品；凌晨的超时本次未复现，不能推断其历史根因已修复。UTC 请求统计日切后，本次预留计数为 1。
-
-随后抖音分享诊断约 3198 ms 返回 HTTP/code=200、status_code=0，aweme_details=null、filter_list.reason=5。TikHub [该端点官方说明](https://docs.tikhub.io/186826220e0)将 reason=5 解释为私密内容；这是接口的过滤结论，不据此断言作者账号私密。未新增关注、未试发作品，没有切换端点尝试获取受限内容。已请用户补充公开作品链接。
-
-0.3.3 增加单作品响应解析，兼容 aweme_detail 对象及唯一的 aweme_details 元素；多作品或冲突表示拒绝猜测。空结果返回 DOUYIN_DETAIL_UNAVAILABLE，按已知过滤码解释问题，不泄露原响应，不增加请求，不自动重试。适配器版本 metadata-r1.3 使历史能力证据重新待验。105 项 pytest、ruff、格式与编译检查通过；新增用例覆盖过滤、两种单作品形状、身份匹配和歧义拒绝。单元素列表支持当前是代码与测试证据，真实公开抖音样本仍待核验。
-
-手机镜像已连通；独立链接诊断 t22s0 已显示。直接在手机 Safari 访问视频号原链接后，可进入微信播放作者和标题匹配的作品。Grok Bot 消息内点击尚未成功核验；后续桌面点击也出现无响应，不能据此确定为产品链接故障。
-
-同一原生任务的纯探针计划北京时间 14:40，独立读取成功 envelope 的 observed_at 为 14:43:46，probe_id=sl-phone-20260913-1440、data_requests=0、messages_sent=0、version=0.3.2。该次延迟 3 分 46 秒，证明一次真实原生唤醒，不保证精确时刻或完整自动业务。Bot 随后恢复正式任务定义和暂停，桌面侧栏已显示原名称及暂停；完整定义仍需最终复核。
-
-14:51 Bot 报告 0.3.3 升级和 resume 完成，但随后的 AI创变工坊前台 poll 为 pages=0 / PAGE_IDENTITY_INVALID，新 metadata-r1.3 的视频号能力仍待验。随后直接核验实例 app/0.3.1、0.3.2、0.3.3 的全部文件集合和摘要均通过，0.3.3 源 SHA 为 f600198；SQLite integrity_check=ok，14 ignored、1 sent，维护文件不存在。升级前后逐行保全及凭据摘要一致由 Bot 的交付日志报告。
-
-15:06 一次标准 Client/transport 诊断实际返回 HTTP/code=200，data 仅有 debug_id、debug_info、message；username、videos、objects、分页字段均不存在。供应商提示参数可能无效，不能仅凭该通用提示断言此前成功过的作者 ID 无效。耗时约 1030 ms，请求计数 4→5，未保存原响应；日志为 logs/wechat-list-structure-0.3.3.json。0.3.3 没有改变视频号解析逻辑，目前不能将上游间歇错误归因于升级。
-
-0.3.4 针对此结构返回 WECHAT_LIST_UNAVAILABLE 和核对作者/接口的安全提示，保留真实身份冲突拒绝和有效空尾页处理，不增加请求或自动重试，也不透出供应商调试内容。恢复验证同样拒绝该错误信封。新增 3 项回归，全套 108 项测试、ruff/格式、编译与双实例安装冒烟通过；15:22 实例升级完成，独立验证 0.3.4 源 SHA 为 5acc688、所有安装文件集合与摘要通过、备份摘要及两份 SQLite 完整性通过、原通知账本与升级备份逐行一致、maintenance.json 不存在。原生 UI 也读回原名称、版本感知指令、日间每两小时与暂停状态。随后前台 poll pages=1、errors=[]、not_all_new，预留计数 5→6；登记 metadata-r1.3 的近期页证据。此单次成功不能证明供应商间歇错误已消失。
-
-iPhone 通知设置已直接看到允许通知、立即推送、锁屏/通知中心/横幅开启，未修改系统设置。14:51 完成消息的系统横幅未被镜像捕捉，用户回答“没有留意”；因此推送通道和强静默仍未验证，quiet/native/images 能力保持未验证。没有把没有捕捉到横幅写成“没有推送”。15:11:48 又做一次独立对照，Mac 聊天最小化、iPhone 回到主屏幕后发出“手机系统推送验证：请确认这条横幅”；镜像仍没有捕捉到横幅，不能据此证明推送送达或无消息时的强静默。
-
-15:24 用用户原提供的视频号分享做完整前台链路验收，watch add 返回 WECHAT_DETAIL_UNAVAILABLE，解析器未取得作品身份；按约定停止，未新增关注、未做首次列表/试发/dispatch/发信。请求预留 6→8，原作者不变，最终仍 14 ignored、1 sent，last_automatic_slot=null，正式任务暂停。结果已独立读取 logs/e2e-wechat-share-0.3.4.json。此前一页成功与此次分享失败分别成立，不能合并成完整业务通过。
-## 0.3.2 历史交付与验收
-
-- 固定官方 commit 预览升级完成：0.3.1 → 0.3.2，维护归档结果为 done/upgraded，原生 routine 恢复为真实暂停状态。直接读取实例验证 manifest 源 SHA、新旧版本全部文件摘要、备份摘要及 SQLite integrity_check 均通过。
-- 升级后的 watches 和 updates 与维护前备份逐行一致；原关注仍为「AI创变工坊」，14 条 ignored、1 条 sent。旧 app/0.3.1 保留。Bot 比较升级前后的 .env 摘要一致；独立检查其权限仍 0600、修改时间早于升级，未读取或输出密钥。
-- 宿主长度实测消息 t10s1：从桌面实际收到的消息执行“复制”后独立计算，Unicode 2010、UTF-8 2028 字节、ASCII 2001，SHA256 为 e97d3aada4d49ab8bc371026169d1bc449d984becc7a331ebf754b7994f11ebd，与发送参数一致。已登记 measured / utf8 / 2000；2000 是实测范围内的保守操作上限，不是真实宿主最大长度。
-- 正式日间 routine 仍暂停，实际 UI 已核对为 07/09/11/13/15/17/19/21/23 Asia/Shanghai，指令改为 routine poll → routine next，遇门禁不降级，并从 settings.app_version 选择当前 skill。setup check 尚缺原生调度与强静默证据，images_verified=false，模式 foreground_only。这个实例使用服务器 routine，UI 的“测试运行”按钮禁用；[官方说明](https://docs.x.ai/grok-bot/skills-routines-and-automations)提及该能力不代表当前实例可调用。
-- 两平台完整试发尝试未通过：视频号分享解析两次 HTTP_TEMPORARY；抖音先 UPSTREAM_TEMPORARY，后 HTTP_TEMPORARY。未添加临时关注、未领取发送许可、未发送新作品，无法据此验收通知和回执完整链路。程序预留请求计数 5→9；预留次数不等于供应商实际收费次数。
-- 对既有作者的独立前台 poll 也未通过：耗时 30.238 秒，envelope ok=true 但 pages=0、errors/stop_reason 含 HTTP_TEMPORARY，不能只凭 envelope 成功判断业务成功。该次计数 10→11；其间另有一次诊断预留，不计入前述两平台流程。
-- 基础连通性另行通过：实例 curl 到 TikHub 根路径为 200，约 0.112 秒；Python TLS 连接约 0.059 秒。这些只证明基础连接，不证明数据端点可用。额外一次前台诊断保留 Client 门禁、锁、限速和计数，仅将本次整请求上限放宽到 90 秒：约 44.996 秒返回 HTTP 200，但未解析出 videos 列表，计数 11→12。诊断实现未重复包装 code/data；原始响应未保存，具体错误字段未知。标准约 30 秒请求仍失败，不能据此声称没有读超时，亦不能把延长上限作为已验证修复；具体 API 根因未完全确认。
-- 临时诊断直接导入包时产生 9 个派生 .pyc，导致版本文件集合不匹配、稳定入口 ENTRY_STATE_INVALID。已核对均为已验证源码的缓存，将其可恢复地隔离到实例 logs/diagnostic-bytecode-20260913/，未改源码、manifest、数据库或凭据。随后直接调用完整 verify_directory，0.3.1 / 0.3.2 的文件集合与摘要均通过。
-- 缓存隔离后，经稳定入口在真实夜间重跑并独立读回：routine poll 返回 quiet_hours / pages=0，routine next 返回 QUIET_HOURS；请求计数仍 12，updates 仍 ignored=14、sent=1，queued/sending/unknown=0，last_automatic_slot=null。该结果证明新版夜间门禁，不是原生唤醒、日间业务或手机推送静默的证据。
-- 手机镜像尝试停在苹果要求“解锁 iPhone”的界面，无法代替用户完成设备验证。手机链接跳转与后台推送静默仍待真机核对；没有把桌面证据升级为手机验收通过。
-
-实例证据为 logs/host-length-measurement.json、logs/e2e-preview-0.3.2.json 及升级备份中的 snapshot.json / maintenance-result.json。公开文档只保留脱敏结论，不包含凭据、原始响应或图片签名。
-
-## 0.3.1 真实接口验证
-
-- 用户提供的视频号分享链接在开发临时实例中完整执行：解析当前作者「凡诚Max」、获取 15 条作品、核对所有作品作者一致、取得最新作品发布时间和可用原分享链接；最后一次完整成功执行共 3 次 TikHub 请求。调试期间还有其他有界请求，此数不代表整轮调试总数或费用。
-- 精简详情存在间歇性“HTTP/业务码 200，但 data 只有错误信息”；raw=true 能返回当前作品身份，已核验此回退，原始对象只在内存提取元信息。分享详情已有作者 ID/名称时不再重复查询资料接口；曾见额外资料请求失败，不将其误判为分享归属变化。
-- 列表将 media.cover_url 与 cover_url_token 分开提供。未带签名的封面返回 400，限定腾讯图片域名组合后的 URL 返回 **200 / image/jpg**。仅检查响应头，未保存或处理图片正文。该结果证明图片地址可访问，不证明 Grok Bot 客户端已显示新卡片。
-- 本次未验证分页完整覆盖、抖音当前接口、账户 RPS 例外、Grok Bot 静默或图文显示；没有把开发验证写成真实 Bot 的能力标记。
-
-## Grok Bot 与 iPhone 实测
-
-- 独立测试 Bot 实装 0.3.1 / 0a32f70，代码摘要与安装清单一致。真实试发 t0s26 已登记 sent，载荷含一张列表封面；桌面能看到图片，用户提供的 iPhone 截图却显示名为 stodownload 的普通文件，打开提示不能预览。
-- 本实例既有封面一次 HEAD 返回 200、Content-Type=image/jpg，无 Content-Disposition，URL 路径末段为 stodownload；未下载正文。SendToUser 的 images 项仅有 url/alt，所见定义无 filename/MIME 字段。症状与手机文件分类相符，但未证明客户端具体分类算法。
-- 用户授权的独立 Markdown 兼容性试验 t6s0 不传 images 数组；桌面仍显示图片，iPhone 截图只有“封面预览”替代文字。两种方式在目标手机均未通过，后续按既有纯文字回退规则执行，不改已发作品，不下载或托管图片。
-- 错误的每日 04:05 验收任务在 04:14:35–04:14:54 实际执行：automatic 路径被 quiet_hours 阻止，随后旧指令降级到前台并扫描一页，累计请求计数由 4 变 5。自写 silent:true 和零作品发送不证明强静默，该轮不算合格自动验收。
-- 已按授权将正式任务暂停，恢复北京时间 07–23 点每两小时的日程，删除门禁失败后改用前台的指令；实际 UI 已读回关闭状态与新指令。独立纯唤醒探针随后已运行，正式后台仍未启用。
-
-- 日期限定的独立原生探针计划 04:33，实际文件写入时间为 04:42:46.911736（约延迟 9 分 47 秒）；原生 UI 有成功记录，probe_id 与实际临时任务一致。直接只读核对业务库，请求计数仍为 5，1 条 sent、14 条 ignored，last_automatic_slot=null；桌面对话没有本轮自动过程或结束消息。这是一次原生纯探针与桌面静默观察，不是完整业务或手机推送静默验收。手机侧反馈仍待确认。临时任务已暂停并删除，客户端短暂显示旧状态后，最终列表仅剩暂停的正式任务。
-- 当前 0.3.1 配置已直接读回：images_verified=false，native_schedule_verified=false，quiet_execution_verified=false，routine_active=false；4000 unicode 的说明已改为用户选择的前台操作上限。未覆盖安装代码，未改作品账本或 .env。
-
-## 固定 commit 预览升级入口
-
-2026-09-13 按用户“commit & push 并交付实例、全程操作”的授权补齐 tools/upgrade_preview.py。入口验证固定官方远端、完整 commit、干净源码及实际构建包与 Git 文件一致；复用已安装版本的维护协调器和原实例稳定入口。专项测试覆盖拒绝错误身份/来源/脏源码/忽略文件注入、构建中途变更、凭据和 sent/unknown 账本保留、维护计划续接与真实子进程恢复。7 项专项通过，全套 96 项通过；真实 0.3.1 → 0.3.2 实例升级和暂停 routine 恢复也已完成，证据见上方。原生恢复时 routine_plan_id 必须取维护结果的外层 plan_id，不能取 routine_id 或 binding_hash。
-
-## 已执行的本地验证
-
-| 范围 | 证据 |
+| 层次 | 本次结果 |
 | --- | --- |
-| 长度分类与后台探针 | tests/test_host_verification.py；用户选定值不放开自动模式、旧无类型/非法记录拒绝、整组证据更新、后台命令固定 automatic、探针无凭据/无网络/无业务状态变更且不自证静默 |
-| Grok 实测回归 | tests/test_grok_regressions.py；精简详情一次回退/失败有界/身份冲突、签名域名约束与入库、长度预检早于 API、首次图文许可与显示证据、真实暂停登记和启用门禁、消息排版与注入转义 |
-| 三表/实例隔离/时间槽 | tests/test_discovery.py；空实例无首次历史推送、独立库、日间槽、夜间相邻不判停机 |
-| D3/D7 | 首次成功固定一页、失败不消费标记、混合页整页处理、全新增续页、续页恢复、逐作者共同旧槽判断、未来日期重新发现 |
-| 元信息与请求 | tests/test_api.py；字段解析/大整数、仅列表封面、统一开始间隔、跨命令限速、UTC 统计、超过 1000 次不停止、30/120/600 秒退避层级与持久 429 |
-| API 恢复互锁 | H1 路径权限 + 验证产生 H2 实例鉴权 + 原路径成功恢复，其他路径 H3 保留；错误结构不得误解除门禁 |
-| 并发与锁 | 真实线程中的在途 HTTP 不阻塞暂停；旧代次请求/页面拒绝；独立进程争抢 state.lock 与锁顺序检查 |
-| 交付 | tests/test_delivery.py；一作品一许可、排序、固定 payload、同代次资格、暂停后迟到 sent、超时 unknown 不自动重发、可信 not_sent、长度/封面及试发证据绑定 |
-| 升级故障注入 | tests/test_lifecycle.py；prepared/frozen/备份/候选/switching/两文件切换/committed 各中断点；提交后异常不回滚；done 归档中断继续正确版本 |
-| 回执与原生恢复交接 | 冻结收件箱去重、回放 DB 已提交但日志未标记后的幂等、回滚后迟到结果；原生恢复失败保留写入、尊重新的暂停；真实 routine 调用未执行 |
-| 发布包与入口 | 构造 0.3.3 测试包、摘要/路径/符号链接拒绝、目标版本子进程自检、稳定入口重入和代码篡改阻断 |
-| 本地维护 | tests/test_operations.py；配置拒绝与日程基准重设、旧调度证据拒绝、安全导出、库丢失不重建、无效维护门禁、卸载保留资料及明确放弃核对后的指定备份清除 |
-| 自动升级/Star | tests/test_releases.py、test_star.py；最高 SemVer、immutable 和精确 tag SHA、不降级选版、异常静默检查、独立 Star 授权与账号复核；GitHub 操作均 mock |
-| 安装 | tools/smoke_install.py；临时目录两个 Bot、重复安装不覆盖凭据、独立 ID、两个物理 skill、稳定入口可用；real_api_calls=0、host_messages=0 |
+| 规范 | 四章第二版，自动编号/必须显式选择及凭据目录收敛 |
+| 内核与 CLI | 新 authors/works/meta、首页基线、整页新增、JSONL/JSON、错误计数与退出码 |
+| 本地 pytest | 105 passed，macOS / Python 3.12.14；旧测试未计入 |
+| 静态/构建 | ruff check、format、compileall、uv lock 检查通过；内容固定的 local-development 包构建完成 |
+| 独立安装 | 临时中文/空格路径，可执行入口、profile/config、无作者查询通过 |
+| 升级 | 离线假 Release 与合成版本；两 profile 备份/迁移、九阶段故障、提交点前回退/后向前、损坏计划/备份拒绝通过 |
+| Git/发布 | 未暂存、commit/push、PR/合并、tag、正式 Release 或部署 |
+| 实际使用 | 未操作 Grok；未对旧实例安装、迁移、停用或清理 |
 
-文件检查仅发现测试与冒烟中的明确假凭据，无真实 key。文档本地链接已检查；旧媒体/全文实现、依赖、技能和第三方解密资源已从当前源代码移除。未清理任何旧实例资料。
+子进程测试证明：work 在进程结束前逐条可读；SIGINT=130、SIGTERM=143、管道关闭=141，停止后续请求，已提交作品保留。多进程同 profile 互斥、不同 profile 独立；业务共享安装锁阻止升级。JSON 通过临时 spool 保序，正常完整收尾恰好一次 complete。
 
-## 尚未通过目标环境验收
+查询测试覆盖只登记首页、重复 add/unfollow、重新关注基线、老日期/新 ID、首条旧后条新、整页重复、无 ID/作者冲突整页拒绝、非空全新续页/混合页停止、空值保留元信息、后页失败后下次不恢复。失败、部分失败、全局停止和空结果分开计数。
 
-这些限制不是本地测试失败，也不能被本地测试替代：
+安装器对合成旧目录的拒绝及摘要保全测试通过；包遍历/符号链接/重复/额外成员/摘要不符/旧 distribution 拒绝。候选检查在完整验证后运行。升级不重选失败候选、不覆盖旧版本；提交后新增事实保留，增加字段后写入仍通过。
 
-- Grok Bot 修复旧故障误提醒后的正式日间自动静默。独立纯探针的原生唤醒、桌面/iPhone 静默与长度依据已通过，不能代替业务轮验收；封面仍采用文字回退。
-- TikHub 的不同作品类型、分页/置顶/尾页/重复游标覆盖，以及实际 RPS 例外。当前实例两平台已登记 metadata-r1.4 的近期页证据，不能据单页成功宣称完整覆盖或永久可用。
-- 两条作品系统推送的全部确认、实际未知送达核对和宿主限流。两条手机原链接已由用户确认通过，视频号作品系统通知已有确认，抖音作品系统通知未找到。
-- 缺少 Python 时在目标 Linux 自动下载环境的完整安装；本次目标 Bot 复用已有 Python 3.13.5。
-- 已发布的不可变轻量软件 Release 的下载、真实升级与原生 routine 恢复、成功后的 Star 邀请。当前软件 Release 尚未发布。
-- 当前版本的完整真实业务验收：0.3.6 已独立核验，前台通知、原链接、宿主纯探针和后台启用各有证据；19:00 四作者检查已成功，但旧故障误提醒使该轮无更新静默未通过。
+fixtures 为公开契约构造的离线输入。程序的供应商请求均被替身替代，未调用付费 TikHub API，未读取真实凭据。合成 0.5.1/schema2 仅是测试，不代表存在已发布的新版本。
 
-历史样本用于构建脱敏回归用例，当前真实接口结果单独记录在上方；没有把旧全文版的历史测试数或单页成功当作新版完整验收。
-
-正式 V1–V23、A1–A19 仍应分别登记目标环境证据，不能因这里列出 131 项测试就宣称全套产品验收完成。
+仍未验证：两平台付费 API 的实际可见性、更多类型/分页/字段；Grok stdout 实时暴露、截断、单次/总时限和进程生存；Linux/Python 3.13 与 GitHub CI；真实不可变 Release 的网络下载/实际升级；用户目标环境安装和实际使用。Windows 不在支持声明内。

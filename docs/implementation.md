@@ -1,51 +1,74 @@
-# 轻量 R1 实现
+# 0.5.0 实现与输出协议
 
-代码版本 0.3.2，数据库 schema 1，application_id 1397509425。规范来源为 social-lurker-brain 的 Releases/03_轻量系统设计。此实现是新产品基线，不兼容旧全文版数据库和 CLI。
-
-## 模块与边界
+本地实现依据 brain 的 0.5.0 四章；没有沿用旧 R1 的消息、调度、门禁或数据库。目标 0.5.0，输出 schema_version=1；软件版本与输出 schema 独立。
 
 | 模块 | 职责 |
 | --- | --- |
-| config / util / schedule | 显式实例、完整文件配置、三表库身份、短锁、原子文件、日历时槽 |
-| store / monitor | 关注代次、逐作者停机恢复、页事务、全新增续页、资格冻结、补字段终态 |
-| sources / http | TikHub 元信息适配、固定路径、精确大整数、统一 RPS/并发、持久 429 与原路径故障恢复 |
-| delivery / state | 四字段消息、不可变发送许可、可信回执、unknown、运维提醒及覆盖缺口 |
-| releases / lifecycle | 固定官方不可变发布、包摘要、升级提交点、冻结回执重放、原生调度恢复交接 |
-| operations / cli / logs | 安装/绑定/配置/状态/导出/卸载、protocol=1 JSON、只记录错误码的轮转日志 |
-| star | 当前成功事件后的可选邀请，独立同意及当前 GitHub 账号复核 |
+| cli/output | 参数、结构化错误、JSONL flush、JSON spool、唯一 complete |
+| profiles/config | 自动 ID、显式空间、SecretSource、文件优先 |
+| db/service | SL50 新库、整页事务、基线、去重、unfollow/check |
+| adapters/transport | 两平台元信息、固定 origin、1 RPS、超时、有限重试/429 |
+| locks/package/upgrade | 安装/空间 OS 锁、摘要验证、备份、提交点、恢复 |
 
-原生 routine 和发送工具属于 Grok Bot，由两个 skill 调用宿主实际提供的能力；Python 不猜工具名称，不运行 Web server、守护进程或系统 cron。每次激活最多 20 次交付由宿主日常 skill 的循环控制，`routine plan` 给出当前限制；每个许可、候选资格和回执由 Python 强制校验。
+## 命令
 
-## 状态与并发
+```text
+social-lurker [GLOBAL_OPTIONS] profile create --label=中文名
+social-lurker [GLOBAL_OPTIONS] profile list
+social-lurker [GLOBAL_OPTIONS] config set-key [--stdin]
+social-lurker [GLOBAL_OPTIONS] config status
+social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] add LINK
+social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] list [--all]
+social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] unfollow --platform PLATFORM --author-id AUTHOR_ID
+social-lurker --profile PROFILE_ID [GLOBAL_OPTIONS] check
+social-lurker [GLOBAL_OPTIONS] upgrade check
+social-lurker [GLOBAL_OPTIONS] upgrade apply --version VERSION
+```
 
-SQLite 使用 DELETE journal、外键与 5 秒 busy timeout，只允许 runtime、watches、updates 三表。连接不自动创建数据库；配置 ID、schema 或文件版本不一致时拒绝写入。所有短状态操作持有 state.lock；固定锁顺序 poll → request → state。网络与限速等待持 request.lock，不占短状态锁，暂停可以立即改变代次。在途结果回写复核当前代次。
+GLOBAL_OPTIONS：--format jsonl|json、--credentials-file、--install-root、--data-root、--rps、--timeout、--request-retries。选项放在命令前；profile/config/upgrade 禁止 --profile。没有默认空间；编号从 p0001 起、单调增加、不复用。
 
-扫描上下界与作品资格分别持久保存。第一页整页去重，在写入前判断是否全新增；页面、续页决定、游标和首次标记同一事务提交。未来日期不会提前占用去重 ID；缺时间作品补齐后证实未来，仅移除没有许可或回执的同代次 blocked。有效响应仍缺字段则停止自动重复该补查方案，正常列表或用户明确重试可再次补齐。
+## 记录
 
-自动和手动 poll 都按共同旧槽快照逐作者判断停机；只有实际命中才推进恢复槽。API 门禁仍领取正常自动槽，避免把供应商中断当作本地停机。所有请求每实例合计默认 1 RPS、并发 1；结束时间加间隔保守推进下一开始时间。普通临时错误使用 30/120/600 秒下限和抖动，后续允许轮次再试；关联作者/作品失败计数决定层级，独立前台解析无持续失败计数时使用第一层。429 的 Retry-After 和本地下限取更晚时间。没有每日请求额度上限，也不协调其他 Bot 的账户用量。
+公共字段：schema_version、cli_version、run_id（UUID）、type、command、profile_id。时间 UTC RFC3339，所有输出 ID 为字符串。type 为 work/author_error/result/error/complete。参数无法识别命令时 command=null。
 
-消息正文为粗体标题、作者/平台、当地时间和“打开原作品”链接；标题显示 120 字，原链接不截断，北京时间不显示内部时区标识。图片使用列表返回的公开 HTTPS 地址。视频号仅对 wxapp.tc.qq.com 允许组合列表附带的图片资源签名；不会附加视频令牌、API key、Cookie，不增加独立 token 字段、不下载图片、不为封面额外请求数据接口。这类图片链接会过期，不能当作永久文件地址。
+work 包含 platform/author_id/author_name/work_id/title/published_at/discovered_at/url/cover_url/kind/missing_fields。可选字段未知为 null；不从媒体地址构造原链接。必需身份冲突拒绝整页。首见时间不随再次查看改变，非空元信息可更新，空值不抹掉已知字段。
 
-常规发送只使用已验证的图文能力；显式 test_images 仅允许针对指定的 reason=test 作品发一次未验证图文，不改变能力状态。完成真实 sent 并提供用户阅读端显示证据后才能登记 images_verified。当前 iPhone 图片两种发送方式均未通过，按既有规则使用纯文字。
+complete 包含 status（ok/partial/error）、scan_complete、summary。check 三类作者计数相加等于 authors_total。按有限规则完整结束才 succeeded；先输出 work 后页失败仍 failed。全局鉴权/额度/限流终止后续请求，剩余作者 unchecked。调用级错误优先 error；无作者为 ok/scan_complete=true；非 check 扫描计数为零、scan_complete=null。
 
-长度配置同时保存上限、单位、length_basis 与独立 length_evidence。basis 明确区分 provider_documentation、measured、user_selected；用户选择只能用于前台，不能启用后台。旧无类型的记录不自动信任，绑定时整组更新。test-latest 在数据请求前预检。整个结构化载荷按登记的单位保守计数，超限 blocked，不拆分、不生成摘要。发送必须使用许可原文；unknown 不重试，可信 not_sent 才可重新排队，暂停后真实 sent 仍登记。
+完整 JSON 最后输出公共字段（不含 type）、records 数组与 completion；records 不含 complete。本次临时 spool 不属于业务归档，不在数据库保存消费状态。
 
-routine plan 区分关注需求、门禁后的目标和已观察状态。可以登记“有活跃关注但原生任务暂停”；缺少能力证据不能登记后台启用。实际状态与当前计划摘要不匹配时，setup check 继续报告前台模式。维护恢复也使用当前能力门禁，不因升级自动开放未验收的后台。
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 成功，含无新增/幂等 |
+| 1 | 运行、全失败、DB 或升级错误 |
+| 2 | 参数/profile 选择错误 |
+| 3 | check 部分成功 |
+| 4 | profile/安装忙 |
+| 5 | 本地配置/凭据无效或缺失 |
+| 130 / 143 / 141 | SIGINT / SIGTERM / 输出关闭 |
 
-原生任务使用 `routine poll` 和 `routine next`，程序固定 automatic=True，CLI 不接受降级参数。手动命令仍为用户前台请求保留；这减少遗漏参数，不构成能够阻止宿主任意执行其他命令的安全隔离。两个 skill 同时禁止自动失败后切换手动。`routine probe` 仅在短读事务中返回时间、实例与核验标识，不调用网络、发送或写入能力证据；静默与原生调度仍须目标宿主观察。
+error/author_error 用固定脱敏消息，不输出 argv、供应商错误正文、认证头或签名媒体 URL。正常收尾恰好一个 complete；管道关闭/强杀允许无 complete。
 
-## 平台证据
+## 数据与运行保护
 
-默认适配能力为 unverified，不以本地 fixture 授予无人值守能力。`settings.host.evidence_ref.sources` 用 schema=1 结构记录平台/渠道、metadata-r1.2 适配版本、覆盖等级和真实证据引用。抖音支持 normal/lite 显式选择，`watch source` 换渠道清扫描并保留账本；运行时不盲目双查。视频号支持原 username，或明确 channel_id 经专用端点转换；分享链接中的短码不能当账号短号。
+每 profile 的 state.sqlite：meta(profile_id)、authors、works。application_id=0x534C3530、user_version=1；foreign_keys=ON、DELETE journal、FULL synchronous、busy_timeout=5000。拒绝陌生文件、旧库、错 profile 和高版本库，不迁移旧 R1。
 
-抖音必要字段按作品 ID 详情补查采用官方 [fetch_one_video](https://docs.tikhub.io/186826219e0)，仅提取元信息，不按文档建议自动切另一套 Web API。视频号精简详情返回只有错误信息的成功信封时，最多追加一次同路径 raw=true，再只提取作品/作者元信息，完整响应不落盘。鉴权、权限故障或身份冲突不走这一回退；各请求仍共享限速与门禁。接口身份、分页和封面的真实证据见 validation.md；未知身份/尾页不当作“无更新”，不使用历史作者 ID 绕过分享链接解析。
+安装锁→registry 短锁→profile 操作锁→短 SQLite 事务。网络不处于 SQLite 写事务内。add/check/unfollow 操作锁跨调用保持，list 读取已提交快照。同 profile 忙立即失败。SIGINT/SIGTERM 终止当前等待，未提交事务回滚；BrokenPipe 在下一请求前/输出时检测。已提交页保留，不重放。
 
-## 升级恢复
+socket I/O 默认 60 秒，不代表 DNS、总运行时间或宿主时限。网络/5xx 默认不重试，显式配置最多 2 次；429 解析 Retry-After 秒/日期，无效值保守 1 秒，最多一次退避、累计不超过 30 秒，重复/超长停止整轮请求。HTTPS 校验开启，API Authorization 仅发往固定 TikHub origin，不跟随 API 重定向。分享链接传给允许端点，不在本地展开网页或下载媒体。
 
-maintenance.json 是唯一维护计划。prepared 排空在途请求和发送；frozen 后拒绝普通写入并允许专用回执收件箱。备份位于现有 backups，清单核验完整性；候选由目标版本自检后才能切换。
+## 适配证据
 
-显式开发补丁通过仓库侧 tools/upgrade_preview.py 交付。该工具要求固定官方远端、干净完整 SHA checkout，逐文件核对打包结果与 Git 对象，然后在隔离 Python 子进程中调用实例已安装的 Lifecycle.begin。原版本负责提交前阶段，稳定 run.py 负责切到已提交目标并继续恢复；脚本不写配置、凭据或业务库，也不修改已安装旧版本。它不放宽正常 upgrade apply 的正式 Release 要求，不自动选择浮动开发分支；未完成维护仍只由原实例恢复入口继续。
+2026-10-07 官方公开 Markdown/OpenAPI 可读取（普通 HTML 的部分视频号页仍不可访问）。请求契约与 fixtures 已交叉核对；fixtures 是按契约构造的离线输入，不是新抓取的真实响应。
 
-数据库和 settings 是两个独立文件：先持久记录 switching，再依次替换。中断处于 switching 默认恢复旧组合；持久 committed 后永不恢复旧快照。所选版本重放回执时先提交 DB 再标记收件箱，重放幂等。最后一批回执与 business_writes_open 在同一短锁内衔接，避免遗漏迟到结果。原生 routine 恢复失败保留开放写入，使用最新关注快照及绑定摘要核对宿主证明，完成后才归档计划。
+| 平台/角色 | 官方来源 |
+| --- | --- |
+| 抖音列表 | https://docs.tikhub.io/186826223e0.md |
+| 抖音分享解析/详情/资料 | https://docs.tikhub.io/186826220e0.md / https://docs.tikhub.io/186826219e0.md / https://docs.tikhub.io/186826222e0.md |
+| 视频号列表/详情/原链接 | https://docs.tikhub.io/472974841e0.md / https://docs.tikhub.io/472974842e0.md / https://docs.tikhub.io/472974844e0.md |
 
-日志最多当前文件和两份轮转，每份约 2 MiB；只存时间与固定错误码。凭据、正文、游标、原始响应、GitHub 账号与 Star 选择不入日志。默认卸载保留资料；完整清除需明确范围、备份选择和未决回执核对。
+抖音首页 max_cursor=0、count=20、sort_type=0、channel=normal；整页验证作者，可证实他人主发的合作项排除且不能授权续页，未知归属报错。详情路径最多一次，不切换 Web/raw 渠道。
+
+视频号 raw=false 的 username/videos/count/up_continue/last_buffer。up_continue=0 的非空页也是尾页，不沿用旧推断。作品大整数经 Python 精确解析后转字符串；每条新作至多一次详情、一次原链接，不为封面发请求，不读媒体/解密字段。只支持已核对的微信 sph 分享短链；未知主页形式报 SOURCE_LINK_INVALID。
+
+真实可见性、全部类型和字段变更仍需后续付费授权及实际使用观察。Windows 尚不支持；Linux/macOS 使用 fcntl，当前本机只验证 macOS。

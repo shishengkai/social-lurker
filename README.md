@@ -1,126 +1,53 @@
-# 盯梢者 · social-lurker
+# 盯梢者（social-lurker）0.5.0
 
-替你关注作者，发现新作品就主动推送。每条作品一条消息，包含**作者、发布时间、标题、原作品链接**，可附封面图。想看内容，点链接回原平台。
+纯 Python CLI：登记作者首页基线，查询关注作者，把未入库作品的元信息逐条输出为 JSONL。调度、展示和通知由调用者承担。需要 Python 3.12+，运行依赖只有标准库。软件发行入口为 [v0.5.0](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.0)，发布与真实平台/Grok 使用验收分别记账。
 
-首批面向 **Grok Bot、抖音和微信视频号**，使用 TikHub 获取动态数据。只关注新发布，不下载媒体、不转写全文、不生成摘要，也不搭建阅读网站。
+自动分配 p0001、p0002…，标签只用于显示。业务调用必须显式 --profile；没有默认空间或全局当前 profile。
 
-## 当前进度
-
-**轻量 R1：19:00 的首轮正式后台业务已检查四位作者，4 页全部成功且没有新作品，但误发了一条已恢复的旧故障提醒。0.3.6 修复旧提醒问题，131 项本地测试、Python 3.12/3.13 CI 和安装冒烟通过，补丁已交付并独立核验；修复后的正式日程静默待验。手机封面继续使用文字回退，作品系统推送仍仅部分确认。**
-
-| 项目 | 状态 |
-| --- | --- |
-| 元信息检查、数据库、去重和通知交付协议 | 已实现，本地测试通过 |
-| 独立实例安装、重复安装、升级中断恢复 | 已完成原地升级至 0.3.6；新旧版本保留，安装包/备份/数据库及既有通知账本已直接核验 |
-| 自动化回归 | 0.3.6 本地 131 项测试及 Python 3.12/3.13 CI 通过 |
-| TikHub 真实数据 | 两平台新分享解析、首次一页及前台试发已通过；仍观察到间歇性接口错误，分页与更多作品类型待验收 |
-| Grok Bot 消息 | 真实回执与长度实测通过；iPhone 两种图片方式均失败，当前使用文字 |
-| Grok Bot 后台 | 夜间门禁、原生纯探针及桌面/iPhone 静默通过；正式日间任务已启用，四位作者首轮检查成功；旧故障误提醒已定位，修复后静默待验 |
-| 不可变稳定软件 Release | 尚未发布 |
-
-0.3.1 修复分享解析与列表封面，消息突出标题，显示作者、时间和“打开原作品”。实际 iPhone 会把该视频号封面当成不可预览文件，改用 Markdown 也只显示替代文字；后续通知按规则使用四字段文字，不增加图片下载或托管。
-
-0.3.2 增加固定自动模式的 routine 命令和不调用数据接口的唤醒探针，区分用户选定长度与宿主已验证长度。当前实例已用**固定 commit 预览升级入口**完成备份、切换和恢复，程序文件摘要及升级前后的关注、通知记录已直接核对。`upgrade apply` 仍只选择正式不可变 Release，重复安装不能切换版本。步骤见[安装说明](docs/installation.md)。
-
-0.3.3 对抖音接口的单作品对象及单元素作品列表做明确解析；接口过滤或空作品会提示更换公开链接，不再误报身份格式错误，也不自动重试或切换接口绕过可见性限制。
-
-0.3.5 按“只通知本人发布”处理抖音合作作品：仅跳过已确认由别人发布、关注作者参与合作的项目，保留本人的正常作品；含跳过项的页面不继续翻页，身份不明的外来作品仍报错。
-
-0.3.6 在作者完整检查成功后取消尚未发送的旧故障提醒，并在领取许可时核对旧版本留下的恢复证据。已发送、发送中及未知送达的事实保留；迟到回执继续按原尝试登记，恢复后再次故障建立新的提醒。该修复不改变来源适配器和检查频率。
-
-**上传代码后可以在 Grok Bot 安装开发预览并开始联调；发布本身不会让未验证的功能自动变为可用。** 当前平台适配默认未验证，后台运行须完成首次配置与能力核验。详细证据见 [验证记录](docs/validation.md)。
-
-## 在 Grok Bot 中开始试用
-
-在你希望使用的 Bot 中发送：
-
-> 请安装并配置盯梢者当前轻量开发预览：https://github.com/shishengkai/social-lurker
-
-Bot 按 [维护 skill](skills/social-lurker-maintainer/SKILL.md) 完成安装和配置。你只需提供需要关注的作者，以及配置当前实例的 TikHub API key；不必复制长脚本或手工填写一套数据库配置。Key 使用受保护输入或直接写入该实例 `.env`，不发到普通聊天中。实际检查会调用 TikHub，费用由服务商计收。
-
-首次试用按以下顺序进行：
-
-1. **安装并配置。** Bot 确认自己的持久工作目录和身份，准备 Python 3.12+，创建独立实例。
-2. **添加作者并验证数据。** 提供抖音或视频号作者主页、作品分享链接，核对解析出的作者、作品时间和原链接。首次关注从现在开始，不自动推送历史作品。
-3. **明确试发一条。** 对 Bot 说“试发这位作者最近一条作品”。检查消息排版、链接跳转和实际送达；图文可用时附封面，不支持时使用文字。
-4. **验证后台运行。** Bot 先用不查作品、不发通知的独立探针核验原生唤醒和静默；前置能力齐备后启用正式日程，再核对首轮真实自动业务。门禁失败就停止，不以前台补跑代替自动验收。原生任务须写全实例入口与 `--instance` 参数；界面显示任务成功还需核对程序实际返回值。
-
-能力不足或数据接口返回异常时，Bot 应说明具体缺项，保留可用的前台操作。首次联调可能需要修正平台适配或宿主调用方式；不能把本地测试通过当作这些环节已经可用。
-
-正式稳定版发布后，安装指令可简化为：
-
-> 请安装并配置盯梢者：https://github.com/shishengkai/social-lurker
-
-稳定安装要求官方 GitHub Release 具备固定版本、完整安装资产和不可变状态。**仅 push 源码不会生成稳定安装包。** 首次配置和能力核验仍需完成。
-
-## 日常使用
-
-用自然语言告诉 Bot 即可，例如：
-
-- “盯一下这个作者：〈链接〉”
-- “我现在关注了哪些作者？”
-- “试发这位作者最近一条作品。”
-- “暂停盯梢这位作者。”
-- “恢复盯梢这位作者。”
-- “检查盯梢者有没有新版本。”
-
-默认规则：
-
-- **日间检查：** 北京时间 07、09、11、13、15、17、19、21、23 点，每天 9 轮；00–07 点不启动例行检查。没有新作品时不推送“检查完成”等消息。
-- **逐作品通知：** 作者、发布时间、标题、原作品链接放在一条消息中；封面仅使用列表顺带返回的合格地址，不为封面额外调用接口。单次激活默认最多交付 20 条，余项等后续允许轮次。
-- **节省请求：** 默认查首页；本页全部是符合观察范围的新增作品，且分页信息有效时才继续下一页。首次有效检查固定一页。不设每日请求次数硬上限，统一限速和退避。
-- **暂停与恢复：** 暂停取消待发通知，恢复从恢复时刻开始；不补暂停期间的作品。正常夜间停查不算暂停，夜间新作可在早晨发现。
-- **停机与去重：** 不追补停机期间尚未发现的历史，已有待办保留；同一 Bot 内按作品 ID 去重。发送结果不明时等待核对，不自动重发。
-- **独立数据：** 每个 Bot 各用自己的数据库和配置；两个 Bot 关注同一作者时各自通知，互不合并。
-
-条件翻页是有限覆盖策略；置顶、乱序、延迟进入列表和平台可见性可能造成漏报，不承诺收齐全部作品。旧全文版需要另建轻量实例、重新配置和关注，不导入旧库，也不自动清理旧资料。
-
-## 安装与维护入口
-
-项目使用两个 skill：
-
-| Skill | 职责 |
-| --- | --- |
-| [social-lurker](skills/social-lurker/SKILL.md) | 管理关注、检查动态、逐作品交付与回执核对 |
-| [social-lurker-maintainer](skills/social-lurker-maintainer/SKILL.md) | 安装配置、宿主验证、接口修复、升级恢复和卸载 |
-
-用户主动任务完成后会自动检查稳定新版，有新版时提示；明确要求升级后才应用。成功安装或升级后可邀请 Star，实际 Star 需要独立同意。后台检查不混入升级和 Star 提示。
-
-给执行安装的 Bot：先读取维护 skill。用户明确试用开发预览时，使用安装器的 `--allow-working-tree`；默认安装只接受固定官方仓库的最高不可变稳定 Release。软件包验证失败时停止，不切换到旧全文版。具体命令、JSON 协议和宿主核验步骤见 [安装说明](docs/installation.md)。
-
-## 本地文件
-
-程序运行时仅需 Python 3.12+，使用标准库。日常状态保存在 SQLite 三表中，settings 和 `.env` 使用文件；不需要独立服务器。
-
-```text
-<当前 Bot 的持久目录>/social-lurker/<instance>/
-  run.py
-  app/<version>/                # 固定版本的程序与两个 skill
-  settings.json                # 本实例配置
-  .env                         # 本实例 TIKHUB_API_KEY
-  state.sqlite                 # 关注、作品元信息、交付与运行状态
-  poll.lock
-  request.lock
-  state.lock
-  maintenance.json             # 仅未完成升级期间存在
-  logs/
-  backups/
-```
-
-只有确认 `/workspace` 属于当前 Bot 且可持久保存时，才采用 `/workspace/social-lurker/` 默认根目录。卸载默认保留资料，清除实例数据需要明确选择。
-
-## 开发与发布
+## 本地开发
 
 ```sh
-uv sync --python 3.12 --group dev
+uv sync --frozen --group dev
+uv run social-lurker --help
 uv run pytest -q
 uv run ruff check install.py src tests tools
 uv run ruff format --check install.py src tests tools
 uv run python tools/smoke_install.py
 ```
 
-开发入口为 `tools/dev.py`，实例入口为安装器生成的 `run.py`；命令显式绑定实例绝对目录，参数使用 `protocol:1` JSON。
+开发时用显式安装/数据根放置锁和数据；程序不读取旧 .env、旧库或旧 .local 实例。参考 [实现说明](docs/implementation.md) 与 [本地验收](docs/validation.md)。
 
-当前交付顺序：**上传开发预览 → Grok Bot 实际安装与联调 → 修复并验收 → 发布不可变稳定版本**。构建和发布步骤见 [软件发布流程](docs/releasing.md)。
+## 安装与使用
 
-[实现说明](docs/implementation.md) · [安装说明](docs/installation.md) · [验证记录](docs/validation.md)
+正式包使用干净的固定提交构建，manifest 为 source_state=clean；发行资产与不可变 tag、Git SHA 和摘要一致。开发工作区预览须显式 --development，其 git_sha 只表示基准提交，实际代码由文件摘要固定。
+
+```sh
+uv run python tools/build_release.py --output dist/cli-0.5.0
+uv run python install.py --package dist/cli-0.5.0/social-lurker-cli-0.5.0.tar.gz
+~/.local/opt/social-lurker-cli/bin/social-lurker profile create --label=娱乐
+~/.local/opt/social-lurker-cli/bin/social-lurker profile list
+~/.local/opt/social-lurker-cli/bin/social-lurker config set-key
+~/.local/opt/social-lurker-cli/bin/social-lurker --profile p0001 add 'https://www.douyin.com/user/AUTHOR_ID'
+~/.local/opt/social-lurker-cli/bin/social-lurker --profile p0001 check
+~/.local/opt/social-lurker-cli/bin/social-lurker --profile p0001 --format json list --all
+~/.local/opt/social-lurker-cli/bin/social-lurker --profile p0001 unfollow --platform douyin --author-id AUTHOR_ID
+```
+
+业务示例会使用 TikHub 服务；自动测试和安装冒烟全部离线。config set-key 使用隐藏终端输入或 --stdin，不把 key 放在 argv。
+
+默认安装根 ~/.local/opt/social-lurker-cli、数据根 ~/.local/share/social-lurker-cli、凭据 ~/.config/social-lurker-cli/credentials.json。安装时可指定 --install-root/--data-root；已安装入口绑定数据根，防止升级遗漏其他根的 profile。凭据路径可通过全局 --credentials-file 指定。全局选项放在命令前。详见 [安装与升级](docs/installation.md)。
+
+## 查询与输出
+
+- add 只登记首页，不输出 work，不导入全部历史。重复 active add 幂等；重新关注仍只登记当下首页。
+- check 从首页开始，整页判断新旧、验证并提交后输出新增。非空页全新增且有下一页才继续；混合页完整处理后停止。
+- 稳定作品 ID 未入库就算新增，即使发布时间很早。旧 ID 改题不输出，新 ID 重发输出。
+- 无 ack、待消费队列、重放或跨运行游标恢复。入库到输出之间的损失由调用者承担；不能保证发现全部发布。
+- 每条 JSONL flush，最后一条 complete；完整 JSON 使用临时 spool。无新增仍 complete，失败/部分失败与空结果区分。
+- 同 profile 用 OS 操作锁；不同 profile 独立。各进程默认串行 1 RPS，429 有限等待；跨 profile 共用 key 由外围错峰。
+
+命令、字段与退出码见 [CLI 协议](docs/implementation.md)。原链接未知可输出 null/missing_fields，不下载媒体、不产生正文。
+
+只有显式 upgrade check / upgrade apply --version VERSION 查询或应用正式版本。日常业务不检查更新。没有 skill、调度、Bot 门禁、发送、Web、daemon 或 Star。
+
+规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。旧 0.3.6 源码可从历史提交 30bdf9c 追溯；旧实例、数据库和备份不因重写处置。两平台真实接口覆盖和 Grok 实际使用仍未验证。CI 及本地程序验收不能替代这些使用证据。

@@ -1,292 +1,236 @@
-"""Versioned JSON command boundary. Provider payloads and credentials never escape it."""
-
 import argparse
+import getpass
+import os
+import signal
 import sqlite3
 import sys
+import warnings
+from contextlib import ExitStack, nullcontext
+from pathlib import Path
 
-from .config import Instance, message_limit
-from .delivery import Delivery
+from . import __version__, upgrade
+from .adapters.base import PLATFORMS, identity
+from .adapters.douyin import Douyin
+from .adapters.links import source_link
+from .adapters.wechat import Wechat
+from .config import DEFAULT_CREDENTIALS, DEFAULT_DATA, DEFAULT_INSTALL, Config, FileSecrets
+from .db import Database
 from .errors import LurkerError, require
-from .http import Client
-from .lifecycle import Lifecycle
-from .monitor import Monitor
-from .operations import bind, check, configure, export, instance_status, routine_plan, uninstall
-from .releases import discover
-from .sources import TikHub
-from .store import Store
-from .util import canonical, parse_json, semver
+from .locks import lock
+from .output import Output, summary
+from .package import VERSION
+from .profiles import FileRegistry
+from .service import Service
+from .transport import Transport
 
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        raise LurkerError("COMMAND_INVALID", "命令参数无效，请查看帮助")
+        raise LurkerError("INPUT_INVALID")
 
 
-def validate_input(command, p):
-    specs = {
-        ("setup", "check"): (set(), set()),
-        ("setup", "bind"): (set(), {"bot_id", "routine_id", "host", "sources", "evidence"}),
-        ("config", "validate"): (set(), set()),
-        ("config", "set"): (set(), {"timezone", "monitor", "rate_limit", "limits"}),
-        ("routine", "plan"): (set(), set()),
-        ("routine", "poll"): (set(), set()),
-        ("routine", "next"): (set(), set()),
-        ("routine", "probe"): ({"probe_id"}, set()),
-        ("status",): (set(), set()),
-        ("watch", "list"): (set(), set()),
-        ("watch", "add"): (set(), {"source", "platform", "author_id", "channel_id"}),
-        ("watch", "source"): ({"watch_id", "variant"}, set()),
-        ("watch", "purge"): ({"watch_id"}, {"confirmed"}),
-        ("watch", "test-latest"): ({"watch_id"}, set()),
-        ("poll",): (set(), {"automatic", "watch_id"}),
-        ("metadata", "retry"): ({"update_id"}, set()),
-        ("dispatch", "next"): (set(), {"foreground_test", "automatic", "test_images", "update_id"}),
-        ("dispatch", "skip-queued"): ({"update_ids"}, set()),
-        ("dispatch", "list"): (set(), {"state"}),
-        ("api", "verify-and-resume"): ({"hold_id", "params"}, set()),
-        ("export", "watches"): ({"path"}, set()),
-        ("export", "updates"): ({"path"}, {"watch_id", "since", "until"}),
-        ("upgrade", "check"): (set(), {"quiet"}),
-        ("upgrade", "apply"): (set(), {"confirmed"}),
-        ("maintenance", "resume"): (set(), set()),
-        ("star", "invite"): ({"event"}, set()),
-        ("star", "apply"): ({"account"}, {"confirmed"}),
-    }
-    for action in ("pause", "resume", "remove"):
-        specs[("watch", action)] = ({"watch_id"}, set())
-    for action in ("uninstall", "purge-instance"):
-        specs[(action,)] = (
-            set(),
-            {"confirmed", "host_detached", "backup_path", "discard_backup", "abandon_unresolved"},
-        )
-    if command in {("dispatch", "report"), ("dispatch", "resolve")}:
-        from .delivery import validate_receipt
-
-        validate_receipt(p)
-        return
-    require(command in specs, "COMMAND_INVALID")
-    required, optional = specs[command]
-    require(required <= set(p) <= required | optional, "INPUT_INVALID")
-    for key in (
-        "automatic",
-        "foreground_test",
-        "test_images",
-        "confirmed",
-        "host_detached",
-        "discard_backup",
-        "abandon_unresolved",
-        "quiet",
-    ):
-        if key in p:
-            require(type(p[key]) is bool, "INPUT_INVALID")
-    for key in ("watch_id", "update_id", "hold_id", "bot_id", "routine_id", "probe_id"):
-        if key in p:
-            require(isinstance(p[key], str) and 0 < len(p[key]) <= 512, "INPUT_INVALID")
-    for key in ("since", "until"):
-        if key in p:
-            require(type(p[key]) is int and 0 <= p[key] < 4102444800, "INPUT_INVALID")
-    if "since" in p and "until" in p:
-        require(p["since"] <= p["until"], "INPUT_INVALID")
-
-
-def public_watch(row):
-    row = dict(row)
-    row["scan_pending"] = row.pop("scan_state_json", None) is not None
-    return row
-
-
-def execute(instance, command, data):
-    require(
-        isinstance(data, dict) and type(data.get("protocol")) is int and data.get("protocol") == 1,
-        "PROTOCOL_REQUIRED",
+def parser():
+    p = Parser(
+        prog="social-lurker", description=f"盯梢者 {__version__}：作品元信息 CLI。全局选项放在命令前。"
     )
-    p = {k: v for k, v in data.items() if k != "protocol"}
-    validate_input(command, p)
-    store = Store(instance)
-    client = Client(instance)
-    source = TikHub(client)
-    monitor = Monitor(instance, source)
-    if command == ("setup", "check"):
-        return check(instance)
-    if command == ("setup", "bind"):
-        return bind(instance, p)
-    if command == ("config", "validate"):
-        instance.gate("read")
-        instance.credentials()
-        return {"valid": True}
-    if command == ("config", "set"):
-        return configure(instance, p)
-    if command == ("routine", "plan"):
-        return routine_plan(instance)
-    if command == ("routine", "poll"):
-        return monitor.poll(automatic=True)
-    if command == ("routine", "next"):
-        return Delivery(instance).next(automatic=True)
-    if command == ("routine", "probe"):
-        # Native wake verification never invokes business work or certifies silence itself.
-        with instance.transaction("read") as (_, settings):
-            return {
-                "kind": "host_wake_probe",
-                "probe_id": p["probe_id"],
-                "instance_id": settings["instance_id"],
-                "bound_routine_id": settings["host"]["routine_id"],
-                "observed_at": int(instance.clock()),
-                "version": settings["app_version"],
-                "data_requests": 0,
-                "messages_sent": 0,
-            }
-    if command == ("status",):
-        return instance_status(instance)
-    if command == ("watch", "list"):
-        return store.list()
-    if command == ("watch", "add"):
-        author = source.resolve_author(
-            p.get("source"),
-            platform=p.get("platform"),
-            author_id=p.get("author_id"),
-            channel_id=p.get("channel_id"),
-        )
-        return public_watch(store.add(author))
-    if command[:1] == ("watch",) and command[1:] in {("pause",), ("resume",), ("remove",)}:
-        return public_watch(
-            store.transition(
-                p["watch_id"], {"pause": "paused", "resume": "active", "remove": "removed"}[command[1]]
-            )
-        )
-    if command == ("watch", "source"):
-        return public_watch(store.change_variant(p["watch_id"], p["variant"]))
-    if command == ("watch", "purge"):
-        return store.purge(p["watch_id"], p.get("confirmed", False))
-    if command == ("watch", "test-latest"):
-        message_limit(instance.gate("read"))
-        row = monitor.test_latest(p["watch_id"])
-        if row["state"] == "blocked":
-            monitor.metadata(row["id"])
-        with instance.transaction("read") as (db, _):
-            result = db.execute("SELECT id,state,reason FROM updates WHERE id=?", (row["id"],)).fetchone()
-        return dict(result) if result else {"state": "not_eligible"}
-    if command == ("poll",):
-        return monitor.poll(automatic=p.get("automatic", False), watch_id=p.get("watch_id"))
-    if command == ("metadata", "retry"):
-        return monitor.metadata(p["update_id"])
-    if command == ("dispatch", "next"):
-        return Delivery(instance).next(
-            foreground_test=p.get("foreground_test", False),
-            automatic=p.get("automatic", False),
-            test_images=p.get("test_images", False),
-            update_id=p.get("update_id"),
-        )
-    if command in {("dispatch", "report"), ("dispatch", "resolve")}:
-        return Delivery(instance).report(p)
-    if command == ("dispatch", "skip-queued"):
-        return Delivery(instance).skip(p["update_ids"])
-    if command == ("dispatch", "list"):
-        require(
-            p.get("state", "unknown")
-            in {"blocked", "queued", "sending", "sent", "unknown", "cancelled", "ignored"},
-            "INPUT_INVALID",
-        )
-        with instance.transaction("read") as (db, _):
-            return [
-                dict(r)
-                for r in db.execute(
-                    "SELECT id,watch_id,platform,work_id,author_name,published_at,title,source_url,state,error_code,attempt_id,payload_hash,provider_message_id,send_started_at FROM updates WHERE state=? ORDER BY first_seen_at,id",
-                    (p.get("state", "unknown"),),
-                )
-            ]
-    if command == ("api", "verify-and-resume"):
-        return client.verify(p["hold_id"], p["params"])
-    if command[:1] == ("export",) and command[1:] in {("watches",), ("updates",)}:
-        return export(
-            instance,
-            command[1],
-            p["path"],
-            watch_id=p.get("watch_id"),
-            since=p.get("since"),
-            until=p.get("until"),
-        )
-    if command == ("upgrade", "check"):
-        try:
-            settings = instance.gate("read")
-            d = discover()
-            newer = semver(d["manifest"]["version"]) > semver(settings["app_version"])
-            return {"available": newer, "current": settings["app_version"], "release": d if newer else None}
-        except LurkerError:
-            if p.get("quiet"):
-                return None
-            raise
-    if command == ("upgrade", "apply"):
-        require(p.get("confirmed") is True, "UPGRADE_AUTHORIZATION_REQUIRED")
-        # Never trust a descriptor supplied in chat. Resolve the fixed official source again.
-        if instance.plan():
-            return Lifecycle(instance).resume()
-        return Lifecycle(instance).begin(discover(), confirmed=True)
-    if command == ("maintenance", "resume"):
-        return Lifecycle(instance).resume()
-    if command == ("star", "invite"):
-        from .star import invite
-
-        return invite(p["event"])
-    if command == ("star", "apply"):
-        from .star import apply
-
-        return apply(p["account"], p.get("confirmed", False))
-    if command in {("uninstall",), ("purge-instance",)}:
-        return uninstall(instance, purge=command == ("purge-instance",), **p)
-    raise LurkerError("COMMAND_INVALID")
+    p.add_argument("--version", action="version", version=__version__)
+    p.add_argument("--profile", help="业务命令必需，稳定编号，例如 p0001")
+    p.add_argument("--format", choices=("jsonl", "json"), default="jsonl")
+    p.add_argument("--data-root", type=Path, default=DEFAULT_DATA)
+    p.add_argument("--install-root", type=Path, default=DEFAULT_INSTALL)
+    p.add_argument("--credentials-file", type=Path, default=DEFAULT_CREDENTIALS)
+    p.add_argument("--rps", type=float, default=1.0)
+    p.add_argument("--timeout", type=float, default=60.0)
+    p.add_argument("--request-retries", type=int, default=0)
+    sub = p.add_subparsers(dest="command", required=True, parser_class=Parser)
+    sub.add_parser("add", help="只登记首页基线").add_argument("link")
+    sub.add_parser("list", help="关注作者").add_argument("--all", action="store_true")
+    unfollow = sub.add_parser("unfollow", help="停止关注，保留历史")
+    unfollow.add_argument("--platform", choices=sorted(PLATFORMS), required=True)
+    unfollow.add_argument("--author-id", required=True)
+    sub.add_parser("check", help="从首页进行有限增量查询")
+    profiles = sub.add_parser("profile", help="自动编号与显示标签")
+    actions = profiles.add_subparsers(dest="action", required=True, parser_class=Parser)
+    actions.add_parser("create").add_argument("--label", required=True)
+    actions.add_parser("list")
+    config = sub.add_parser("config", help="配置共享凭据，不输出密钥")
+    actions = config.add_subparsers(dest="action", required=True, parser_class=Parser)
+    actions.add_parser("set-key").add_argument("--stdin", action="store_true", help="从标准输入读取单行 key")
+    actions.add_parser("status")
+    up = sub.add_parser("upgrade", help="显式检查或应用正式版本")
+    actions = up.add_subparsers(dest="action", required=True, parser_class=Parser)
+    actions.add_parser("check")
+    actions.add_parser("apply").add_argument("--version", required=True)
+    return p
 
 
-def main(argv=None):
-    result = None
-    instance = None
-    code = 0
+def requested_format(argv):
+    # An otherwise invalid command still uses the explicitly recognizable output format.
+    result = "jsonl"
+    for index, value in enumerate(argv):
+        if value == "--format" and index + 1 < len(argv) and argv[index + 1] in {"json", "jsonl"}:
+            result = argv[index + 1]
+        elif value in {"--format=json", "--format=jsonl"}:
+            result = value.split("=", 1)[1]
+    return result
+
+
+def _run(
+    argv=None,
+    *,
+    registry=None,
+    secrets=None,
+    adapters=None,
+    transport_factory=Transport,
+    stdout=None,
+    install_locked=False,
+):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    output = Output(fmt=requested_format(argv), stream=stdout)
+    stats = summary()
+    status, exit_code, scan_complete = "ok", 0, None
+    old_handlers = {}
+
+    def interrupted(number, frame):
+        raise LurkerError("INTERRUPTED", exit_code=130 if number == signal.SIGINT else 143)
+
     try:
-        parser = Parser(
-            description="盯梢者轻量 R1：显式实例 + protocol=1 JSON。完整命令见 skills/social-lurker。"
+        args = parser().parse_args(argv)
+        command = args.command + ("." + args.action if hasattr(args, "action") else "")
+        output.common.update(
+            command=command,
+            profile_id=args.profile if args.command in {"add", "list", "unfollow", "check"} else None,
         )
-        parser.add_argument("--instance", required=True)
-        parser.add_argument(
-            "--json", dest="json_input", help="JSON 参数；省略时从标准输入读取，密钥不得作为参数传入"
+        if args.command == "check":
+            scan_complete = False
+        if args.command in {"profile", "config", "upgrade"}:
+            require(args.profile is None, "INPUT_INVALID")
+        else:
+            require(args.profile is not None, "INPUT_INVALID")
+        config = Config(args.rps, args.timeout, args.request_retries)
+        config.validate()
+        if args.command == "upgrade" and args.action == "apply":
+            require(VERSION.fullmatch(args.version), "INPUT_INVALID")
+        for number in (signal.SIGINT, signal.SIGTERM):
+            old_handlers[number] = signal.signal(number, interrupted)
+        root = args.install_root.expanduser().resolve()
+        data_root = args.data_root.expanduser().resolve()
+        registry = registry or FileRegistry(data_root)
+        secrets = secrets or FileSecrets(args.credentials_file)
+        exclusive = args.command == "upgrade" and args.action == "apply"
+        if not install_locked and (root / "upgrade-state.json").exists():
+            with lock(root / "install.lock", code="MAINTENANCE_BUSY"):
+                upgrade.recover(root)
+        guard = (
+            nullcontext()
+            if install_locked
+            else lock(root / "install.lock", shared=not exclusive, code="MAINTENANCE_BUSY")
         )
-        parser.add_argument("command", nargs="+")
-        args = parser.parse_args(argv)
-        raw = args.json_input
-        if raw is None:
-            require(not sys.stdin.isatty(), "PROTOCOL_REQUIRED")
-            raw = sys.stdin.buffer.read(1024 * 1024 + 1)
-        data = parse_json(raw)
-        instance = Instance(args.instance)
-        result = {"protocol": 1, "ok": True, "result": execute(instance, tuple(args.command), data)}
+        with guard, ExitStack() as stack:
+            # Recheck under the lock; no business writes while an unfinished plan exists.
+            require(not (root / "upgrade-state.json").exists(), "MAINTENANCE_BUSY")
+            if (root / "current.json").exists():
+                pointer, _ = upgrade.current(root)
+                require(pointer["version"] == __version__, "MAINTENANCE_BUSY")
+                require(Path(pointer["data_root"]).resolve() == data_root, "CONFIG_INVALID")
+            if args.command == "upgrade":
+                payload = upgrade.check(root) if args.action == "check" else upgrade.apply(root, args.version)
+            elif args.command == "profile":
+                if args.action == "create":
+                    profile = registry.create(args.label)
+                    payload = {"profile_id": profile.profile_id, "label": profile.label}
+                else:
+                    payload = {
+                        "profiles": [{"profile_id": p.profile_id, "label": p.label} for p in registry.list()]
+                    }
+            elif args.command == "config":
+                if args.action == "set-key":
+                    if args.stdin:
+                        key = sys.stdin.readline(4098).rstrip("\r\n")
+                    else:
+                        require(sys.stdin.isatty(), "INPUT_INVALID")
+                        try:
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("error", getpass.GetPassWarning)
+                                key = getpass.getpass("TikHub API key（隐藏输入）：", stream=sys.stderr)
+                        except (getpass.GetPassWarning, EOFError):
+                            raise LurkerError("CONFIG_INVALID") from None
+                    secrets.set_key(key)
+                payload = secrets.status()
+            else:
+                profile = registry.get(args.profile)
+                if args.command != "list":
+                    stack.enter_context(lock(profile.lock_path))
+                db = Database(profile.db_path, profile.profile_id)
+                stack.callback(db.close)
+                if adapters is None:
+                    transport = transport_factory(secrets, stats, config, before_request=output.ensure_open)
+                    adapters = {"douyin": Douyin(transport), "wechat_channels": Wechat(transport)}
+                service = Service(db, adapters, output, stats)
+                if args.command == "add":
+                    platform, link = source_link(args.link)
+                    secrets.get_key()
+                    payload = service.add(link, adapters[platform])
+                elif args.command == "list":
+                    payload = service.list(args.all)
+                elif args.command == "unfollow":
+                    identity(args.author_id)
+                    payload = db.unfollow(args.platform, args.author_id)
+                else:
+                    # Empty active snapshots do not require a key or issue a request.
+                    if db.authors():
+                        secrets.get_key()
+                    status, exit_code = service.check()
+                    scan_complete = status == "ok"
+                    payload = None
+            if payload is not None:
+                output.record("result", payload=payload)
     except LurkerError as error:
-        result = {"protocol": 1, "ok": False, "error": error.public()}
-        code = 2
-    except (KeyError, TypeError, ValueError, OverflowError, AttributeError):
-        result = {
-            "protocol": 1,
-            "ok": False,
-            "error": LurkerError("INPUT_OR_STATE_INVALID", "参数或持久状态无效，未透传原始内容").public(),
-        }
-        code = 2
-    except (OSError, sqlite3.Error):
-        result = {
-            "protocol": 1,
-            "ok": False,
-            "error": LurkerError("LOCAL_OPERATION_FAILED", "本地读写失败，请核对实例状态").public(),
-        }
-        code = 2
-    if result is not None:
-        if (
-            instance is not None
-            and not result.get("ok")
-            and "args" in locals()
-            and args.command[0] not in {"status", "config", "star", "upgrade", "setup", "export"}
-        ):
-            from .logs import record
+        if error.code == "OUTPUT_CLOSED":
+            return 141
+        status, exit_code = "error", error.exit_code
+        # A signal can arrive outside Service's error handler; preserve snapshot accounting.
+        accounted = stats["authors_succeeded"] + stats["authors_failed"] + stats["authors_unchecked"]
+        stats["authors_failed"] += max(0, stats["authors_total"] - accounted)
+        try:
+            output.record("error", error=error.public())
+        except LurkerError:
+            return 141
+    except (sqlite3.Error, OSError, ValueError, TypeError, KeyError, IndexError):
+        status, exit_code = "error", 1
+        accounted = stats["authors_succeeded"] + stats["authors_failed"] + stats["authors_unchecked"]
+        stats["authors_failed"] += max(0, stats["authors_total"] - accounted)
+        code = (
+            "UPGRADE_FAILED" if output.common["command"] in {"upgrade.apply", "upgrade.check"} else "DB_ERROR"
+        )
+        try:
+            output.record("error", error=LurkerError(code).public())
+        except LurkerError:
+            return 141
+    except SystemExit as error:
+        return error.code  # --help/--version explicitly allow human output.
+    finally:
+        for number, handler in old_handlers.items():
+            signal.signal(number, handler)
+    try:
+        output.complete(status, stats, scan_complete)
+    except LurkerError:
+        return 141
+    finally:
+        output.close()
+    return exit_code
 
-            record(instance, result["error"]["code"])
-        print(canonical(result))
+
+def main(argv=None, **dependencies):
+    code = _run(argv, **dependencies)
+    if code == 141 and dependencies.get("stdout") is None:
+        # CPython must not flush a retained buffer to a dead pipe and replace exit 141 with 120.
+        try:
+            fd = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(fd, sys.stdout.fileno())
+            finally:
+                os.close(fd)
+        except (OSError, ValueError, AttributeError):
+            pass
     return code
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
