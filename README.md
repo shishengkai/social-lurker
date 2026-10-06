@@ -9,10 +9,10 @@
 用户把这个仓库网址交给你安装时，按以下顺序执行：
 
 1. 检查系统、Python 和是否已有纯 CLI 安装。首次安装用正式 Release 包；已有纯 CLI 用“升级”，不重装。
-2. 完成下载、SHA256 校验、安装自检与免费的 TikHub API 连通检查。不要把开发构建当成正式安装。
+2. 完成下载、SHA256 校验、安装自检。不要把开发构建当成正式安装。
 3. 创建或选择该 Bot 使用的 profile，记住返回的真实 ID；所有业务命令必须显式选择它。
-4. 用户提供 TikHub API key 后，通过隐藏输入或安全的 stdin 配置；不把 key 写进聊天、命令参数或日志。
-5. 分别报告版本、入口、profile ID、安装自检与 API 连通检查结果。尚未收到作者链接和检查频率时，在此结束；安装本身不需要付费 API。
+4. 用户提供 TikHub API key 后，通过隐藏输入或安全的 stdin 配置，再执行免费的凭据与接口连通检查；不把 key 写进聊天、命令参数或日志。
+5. 分别报告版本、入口、profile ID、安装自检与带密钥验证结果。尚未收到作者链接和检查频率时，在此结束；安装本身不需要付费 API。
 
 遇到失败时停止并报告错误码及失败步骤。不要自行写包装器、改安装文件、手工写库或切换供应商路径绕过错误。已有目录、旧实例、凭据和数据不删除、不自动导入。
 
@@ -105,51 +105,9 @@ SL_PROFILE_ID=p0001
 
 新建且无作者的 profile 执行 `check` 不访问 TikHub，无需密钥。安装自检应看到版本 0.5.1、正确 profile、空关注列表、成功的 `complete` 和 `summary.requests=0`。`config status` 只显示是否配置及来源，不输出 key。
 
-## 免费检查 TikHub API 是否可达
+## 可选：无密钥健康排查
 
-安装自检后，再真实请求官方 [健康检查接口](https://docs.tikhub.io/237673542e0)：`GET https://api.tikhub.io/api/v1/health/check`。官方示例不需要 API key，响应为 `{"status":"ok"}`。下面的公开探测不读取/发送凭据，不消费账户额度，也不调用作品接口；这不是使用新账号赠送额度请求付费接口。
-
-在将运行 Bot 的同一台机器上执行一次。使用安装时选定的 Python（沿用前面的 `PYTHON`，或设为该解释器的绝对路径）和与 CLI 一致的浏览器 UA；不开启重试、不跟随跳转。
-
-```sh
-"$PYTHON" - <<'PY'
-import json
-import urllib.error
-import urllib.request
-
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-request = urllib.request.Request(
-    "https://api.tikhub.io/api/v1/health/check",
-    headers={
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    },
-    method="GET",
-)
-try:
-    with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
-        raw = response.read(65537)
-        if response.status != 200 or len(raw) > 65536:
-            raise SystemExit("API_CONNECTIVITY_FAILED：状态或响应长度异常")
-        value = json.loads(raw)
-        if not isinstance(value, dict) or value.get("status") != "ok":
-            raise SystemExit("API_CONNECTIVITY_FAILED：健康状态不是 ok")
-except urllib.error.HTTPError as error:
-    raise SystemExit("API_CONNECTIVITY_FAILED：HTTP " + str(error.code)) from None
-except (OSError, ValueError):
-    raise SystemExit("API_CONNECTIVITY_FAILED：网络、超时或 JSON 响应异常") from None
-print("TikHub API 连通检查通过：HTTP 200，status=ok；未测试密钥与作品接口")
-PY
-```
-
-以 **HTTP 200 且 JSON 的 status=ok** 为通过标准；403、重定向、HTML、超时等均失败，不把“有网络响应”当成功，不自动换接口重试。`API_CONNECTIVITY_FAILED` 是这个 README 探测脚本的失败标记，不是 v0.5.1 CLI 新命令或错误码。
-
-这一步实际验证本机到 TikHub 的 HTTPS/网关/健康接口可达。官方明确它是存活探测，不检查依赖；因此不验证密钥、余额、抖音/视频号或作品查询能力。后续业务验收仍需真实调用相应接口。
-
-官方还有 [账户信息接口](https://docs.tikhub.io/186826050e0) `/api/v1/tikhub/user/get_user_info`，需要 Bearer key，返回余额、免费额度及 key 状态等信息。本次没有找到明确的免费定价依据，不把它列为免费验收步骤，也不请求或展示原始账户信息。
+官方 [health/check](https://docs.tikhub.io/237673542e0) 是公开存活探测，HTTP200 且 `status=ok` 表示该健康接口可达；它不检查密钥或业务依赖。遇到网络问题可用它辅助定位，**不能用健康成功替代下面的配置验证**。
 
 ## 配置 TikHub 凭据
 
@@ -163,6 +121,82 @@ PY
 `set-key` 隐藏输入，原子保存凭据文件，权限为 `0600`。没有交互终端的 agent 使用 `config set-key --stdin`，由宿主安全凭据通道向 stdin 提供一行 key；**不要把真实 key 写在命令文本、脚本、聊天或日志里**。没有安全输入通道时，等待用户配置。
 
 凭据文件优先于 `TIKHUB_API_KEY` 环境变量；文件中配置项为空或无效时报错，不静默切换到环境变量。共享 key 跨 profile 使用时，外围安排错峰。
+
+## 免费检查凭据和接口连通性
+
+配置 key 后，请求官方 [账户信息接口](https://docs.tikhub.io/186826050e0)：`GET /api/v1/tikhub/user/get_user_info`。它要求 Bearer key，能返回 key 状态与账户信息。2026-10-07 实查官方 [端点定价接口](https://docs.tikhub.io/186826054e0) 的 `endpoint_cost=0.0`，因此适合免费验证配置，而不是消耗新账号赠送额度请求作品。
+
+以下只读诊断复用**已安装版本**的完整性验证、凭据读取器和 HTTP 实现，先确认当前定价仍为零，才发送密钥。文件优先于环境变量；不输出 key、邮箱、账户原始响应或余额，不自动重试、不跟随重定向。它不是新的 CLI 命令，不修改程序、配置或数据库。
+
+沿用安装时的 `PYTHON` 和 `SL_CLI`。自定义过 `--credentials-file` 时，把第二个参数改为业务命令实际使用的同一路径。
+
+```sh
+"$PYTHON" - "$SL_CLI" "$HOME/.config/social-lurker-cli/credentials.json" <<'PY'
+import fcntl
+import importlib.util
+import json
+import sys
+import time
+from pathlib import Path
+from urllib.parse import urlencode
+
+root = Path(sys.argv[1]).expanduser().resolve().parents[1]
+try:
+    with (root / "install.lock").open("rb") as guard:
+        fcntl.flock(guard, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        if (root / "upgrade-state.json").exists():
+            raise SystemExit("CONFIG_CHECK_FAILED：升级尚未完成，请先用正式入口恢复")
+        spec = importlib.util.spec_from_file_location("sl_bootstrap", root / "bin/launcher.py")
+        bootstrap = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bootstrap)
+        _, version = bootstrap.verified(root)
+        sys.path.insert(0, str(version / "src"))
+        from social_lurker.config import FileSecrets
+        from social_lurker.transport import API_ROOT, BROWSER_USER_AGENT, send_http
+
+        secrets = FileSecrets(Path(sys.argv[2]))
+        key = secrets.get_key()
+        headers = {"Accept": "application/json", "User-Agent": BROWSER_USER_AGENT}
+        endpoint = "/api/v1/tikhub/user/get_user_info"
+        pricing = send_http(
+            "GET", API_ROOT + "/tikhub/user/get_endpoint_info?" + urlencode({"endpoint": endpoint}),
+            headers, None, 30,
+        )
+        envelope = pricing.body if isinstance(pricing.body, dict) else {}
+        info = envelope.get("data")
+        if not (
+            pricing.status == 200 and type(envelope.get("code")) is int and envelope["code"] == 200
+            and isinstance(info, dict) and info.get("endpoint_uri") == endpoint
+            and type(info.get("endpoint_cost")) in (int, float) and info["endpoint_cost"] == 0
+        ):
+            raise SystemExit("CONFIG_CHECK_FAILED：无法确认接口当前免费，未发送密钥")
+        time.sleep(1)
+        reply = send_http(
+            "GET", API_ROOT + "/tikhub/user/get_user_info",
+            {**headers, "Authorization": "Bearer " + key}, None, 30,
+        )
+        if reply.status != 200:
+            raise SystemExit("CONFIG_CHECK_FAILED：账户接口 HTTP " + str(reply.status))
+        body = reply.body if isinstance(reply.body, dict) else {}
+        api_key, user = body.get("api_key_data"), body.get("user_data")
+        if not (
+            type(body.get("code")) is int and body["code"] == 200
+            and isinstance(api_key, dict) and type(api_key.get("api_key_status")) is int
+            and api_key["api_key_status"] == 1 and isinstance(user, dict)
+            and user.get("is_active") is True and user.get("account_disabled") is False
+            and user.get("email_verified") is True
+        ):
+            raise SystemExit("CONFIG_CHECK_FAILED：认证响应或 key/账户状态无效")
+        print(json.dumps({"credential_check": "passed", "credential_source": secrets.status()["source"],
+                          "endpoint_cost": 0, "business_api_tested": False}))
+except Exception:
+    raise SystemExit("CONFIG_CHECK_FAILED：安装、凭据配置或网络异常，请停止并报告") from None
+PY
+```
+
+成功须返回 `credential_check=passed`，并记录 `credential_source` 是 file 还是 environment；这才证明程序选取的凭据能被 TikHub 接受。401/403、超时、HTML、账户异常或无法确认零价均失败，停止并报告。`CONFIG_CHECK_FAILED` 只是此诊断脚本的失败标记，不是 v0.5.1 新错误码。
+
+该检查验证当前账户接口的认证/权限，不证明抖音或视频号端点权限、余额足以支付作品请求或查询成功；正式业务验收仍需对应的真实接口。定价响应外层可能有通用“本次将被计费”文案，脚本以目标端点的数值 `endpoint_cost=0` 为依据；非零或未知时绝不继续。
 
 ## 添加作者与查询（会调用 TikHub）
 
