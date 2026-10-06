@@ -27,9 +27,9 @@ def fixture_upgrade(archive, path):
         for member in tar.getmembers():
             files[member.name] = tar.extractfile(member).read()
     manifest = json.loads(files.pop("manifest.json"))
-    manifest.update(version="0.5.3", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
+    manifest.update(version="0.5.4", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
     files["src/social_lurker/__init__.py"] = files["src/social_lurker/__init__.py"].replace(
-        f'"{__version__}"'.encode(), b'"0.5.3"'
+        f'"{__version__}"'.encode(), b'"0.5.4"'
     )
     files["src/social_lurker/db.py"] = files["src/social_lurker/db.py"].replace(
         b"SCHEMA_VERSION = 1", b"SCHEMA_VERSION = 2"
@@ -77,11 +77,11 @@ def smoke():
         run(["check"], code=2)
         assert "免费认证检查" in run(["config", "--help"])
         run(["--profile", "p0001", "config", "check"], code=2)
-        run(["profile", "create", "--label", "娱乐"])
-        run(["profile", "create", "--label", "知识"])
+        run(["--profile", "娱乐", "profile", "create"])
+        run(["--profile", "知识", "profile", "create"])
         run(["config", "set-key", "--stdin"], stdin="offline-fixture\n")
         assert credentials.stat().st_mode & 0o777 == 0o600
-        for pid in ("p0001", "p0002"):
+        for pid in ("娱乐", "知识"):
             assert (
                 json.loads(run(["--profile", pid, "--format", "json", "check"]))["completion"]["summary"][
                     "requests"
@@ -93,9 +93,9 @@ def smoke():
         with lock(install_root / "install.lock", code="MAINTENANCE_BUSY"):
             result = apply_package(install_root, target)
         assert result["changed"] and len(result["migration_results"]) == 2
-        assert current(install_root)[0]["version"] == "0.5.3"
-        assert run(["--version"]).strip() == "0.5.3"
-        run(["--profile", "p0001", "list"])
+        assert current(install_root)[0]["version"] == "0.5.4"
+        assert run(["--version"]).strip() == "0.5.4"
+        run(["--profile", "娱乐", "list"])
         for profile in FileRegistry(data_root).list():
             db = Database(profile.db_path, profile.profile_id, create=False, supported_schema=2)
             assert db.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

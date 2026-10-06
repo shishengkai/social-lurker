@@ -1,10 +1,10 @@
 # social-lurker CLI implementation
 
-当前软件版本 0.5.2；规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。
+当前软件版本 0.5.3；规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。
 先检查分支、工作区和适用指南。功能开发在 codex/ 分支进行，通过 PR 合回 main；发布从固定、干净的合并提交构建。
 
 - 纯 Python 3.12+ 标准库 CLI；查询元信息。外围负责调度、展示、通知。
-- 自动编号 p0001 起；业务必须显式 --profile，没有默认空间，显示名不是路径。
+- profile create 与业务必须显式 --profile，调用者自选非空 UTF-8 字符串，不自动编号或识别宿主；安全目录映射，旧 p0001 等原路径兼容。v0.5.3 起实施该规则。
 - add 仅首页基线；check 整页提交后输出，非空页全新增才续页，按平台与稳定作品 ID 去重。
 - 无 ack、队列、重放、持久游标、Bot 门禁、skill、daemon、Star 或媒体处理。
 - 文件凭据优先；只在文件未配置项时取环境。真实凭据不进源码、输出、测试和文档。

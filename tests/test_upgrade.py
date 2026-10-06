@@ -75,8 +75,8 @@ def installed(tmp_path, installer):
     root, data = tmp_path / "install", tmp_path / "data"
     installer(archive, root, data)
     registry = FileRegistry(data)
-    for label in ("甲", "乙"):
-        profile = registry.create(label)
+    for pid, label in (("p0001", "甲"), ("p0002", "乙")):
+        profile = registry.create(pid, label)
         db = Database(profile.db_path, profile.profile_id)
         db.upsert_page(Author("douyin", "author-a", "甲"), [work("old")], baseline=True)
         db.close()
@@ -402,7 +402,7 @@ def test_bad_backup_does_not_restore_any_profile(installed, tmp_path):
     with pytest.raises(Crash):
         apply_package(root, target, fault=fault)
     plan = json.loads((root / "upgrade-state.json").read_text())
-    (root / "backups" / plan["id"] / "p0002.sqlite").write_bytes(b"broken")
+    (root / "backups" / plan["id"] / registry.get("p0002").backup_name).write_bytes(b"broken")
     before = [digest(p.db_path) for p in registry.list()]
     with pytest.raises(LurkerError):
         recover(root)

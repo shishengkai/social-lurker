@@ -13,7 +13,7 @@
 ## 命令
 
 ```text
-social-lurker [GLOBAL_OPTIONS] profile create --label=中文名
+social-lurker --profile=自选名称 [GLOBAL_OPTIONS] profile create [--label=显示标签]
 social-lurker [GLOBAL_OPTIONS] profile list
 social-lurker [GLOBAL_OPTIONS] config set-key [--stdin]
 social-lurker [GLOBAL_OPTIONS] config status
@@ -26,7 +26,7 @@ social-lurker [GLOBAL_OPTIONS] upgrade check
 social-lurker [GLOBAL_OPTIONS] upgrade apply --version VERSION
 ```
 
-GLOBAL_OPTIONS：--format jsonl|json、--credentials-file、--install-root、--data-root、--rps、--timeout、--request-retries。选项放在命令前；profile/config/upgrade 禁止 --profile。没有默认空间；编号从 p0001 起、单调增加、不复用。
+GLOBAL_OPTIONS：--format jsonl|json、--credentials-file、--install-root、--data-root、--rps、--timeout、--request-retries。选项放在命令前；profile list/config/upgrade 禁止 --profile；profile create 与业务必须指定。没有默认空间或自动编号，调用者自选名称。
 
 ## 记录
 
@@ -87,3 +87,11 @@ socket I/O 默认 60 秒，不代表 DNS、总运行时间或宿主时限。网�
 `config check` 无 profile、无业务数据库操作。验证本地 SecretSource 后，GET 公开 `/tikhub/user/get_endpoint_info`，要求 data.endpoint_uri 精确匹配 `/api/v1/tikhub/user/get_user_info`，数值 endpoint_cost=0（不接受字符串或 bool）。否则 ENDPOINT_NOT_FREE，且不发送认证请求。随后 GET 账户接口，使用根级 api_key_data/user_data，校验 key 状态 1、账户启用/未禁用且邮箱已验证。账户元信息不进入输出。
 
 成功 result 为 credential_check=passed、credential_source=file|environment、endpoint_cost=0、business_api_tested=false；complete 延用既有协议，requests=2，作者/页/作品计数均为零。认证检查无自动重试或 429 重试，间隔至少一秒；超时、认证、网关错误沿用 Transport 类型。输出关闭、中断仍停止后续请求。价格检查成功不证明作品端点权限或业务可用。现有 v0.5.1 正式包没有此命令。
+
+## 使用者命名 profile（v0.5.3）
+
+profile ID 是非空 UTF-8 字符串，最多 1024 字符，按原样区分；display label 可选，不影响 ID。未知 ID 不自动注册，相同 ID 创建幂等，显式冲突标签拒绝覆盖。宿主身份信息由调用者自己提供，程序不读取 Grok/Codex/WorkBuddy 身份变量。
+
+新 registry schema_version=2，不含 next_id；新路径为 profiles/id-SHA256(UTF-8 ID)/state.sqlite。旧 registry1 只读加载仍严格验证原 next_id 与 pNNNN 路径；创建新名称时原子转换为 registry2，保留旧条目的原 ID、标签、路径，停止编号。旧数据库不改名/搬动，数据库 schema 和输出 schema 均仍为 1。新 registry2 不能交给旧程序读取。
+
+升级备份名采用已验证数据库目录名，避免把任意 ID 拼入路径，同时保留旧 pNNNN.sqlite 计划恢复兼容。创建与升级受原有 OS 锁保护；registry 损坏、路径篡改或符号链接拒绝猜测恢复。大小写、空白、Unicode 组合形式不同会生成不同空间。README 说明推荐 Bot/agent 使用永久唯一身份 ID，同名空间不提供所有权隔离。

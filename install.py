@@ -57,7 +57,7 @@ def install(package, install_root, data_root):
             sync_tree(version_root)
             sync_tree(root / "bin")
             data.mkdir(parents=True, exist_ok=True, mode=0o700)
-            atomic_json(data / "profiles.json", {"schema_version": 1, "next_id": 1, "profiles": []})
+            atomic_json(data / "profiles.json", {"schema_version": 2, "profiles": []})
             atomic_json(
                 root / "current.json",
                 {

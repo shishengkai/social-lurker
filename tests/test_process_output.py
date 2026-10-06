@@ -11,6 +11,7 @@ import pytest
 
 from social_lurker.errors import LurkerError
 from social_lurker.output import Output, summary
+from social_lurker.profiles import FileRegistry
 
 DRIVER = Path(__file__).with_name("subprocess_driver.py")
 
@@ -58,7 +59,7 @@ def test_real_signals_stop_after_committed_page_and_complete(tmp_path, sig, code
         assert records[-1]["summary"]["authors_failed"] == 1
         assert records[-1]["scan_complete"] is False and records[-1]["status"] == "error"
         assert len((tmp_path / "calls").read_text().splitlines()) == 2
-        with sqlite3.connect(tmp_path / "data/profiles/p0001/state.sqlite") as db:
+        with sqlite3.connect(FileRegistry(tmp_path / "data").get("p0001").db_path) as db:
             assert db.execute("SELECT work_id FROM works").fetchall() == [("new",)]
     finally:
         if proc.poll() is None:

@@ -13,8 +13,8 @@ INSTALL_ROOT/install.lock            业务共享 / 升级独占
 INSTALL_ROOT/upgrade-state.json      未完成安装事务计划
 INSTALL_ROOT/backups/ID/             每 profile SQLite、registry/current、完成计划
 DATA_ROOT/profiles.json              安装时建立空 registry；无默认 profile
-DATA_ROOT/profiles/p0001/state.sqlite
-DATA_ROOT/profiles/p0001/operation.lock
+DATA_ROOT/profiles/id-SHA256/state.sqlite
+DATA_ROOT/profiles/id-SHA256/operation.lock
 ```
 
 源码运行可用显式 --install-root/--data-root 放置自己的数据和锁；已安装入口不允许悄悄更换未纳入升级计划的数据根。软件与数据分离，显示标签不参与路径。
@@ -24,7 +24,7 @@ DATA_ROOT/profiles/p0001/operation.lock
 ```sh
 uv run python tools/build_release.py --output dist/cli-0.5.0
 uv run python install.py --package dist/cli-0.5.0/social-lurker-0.5.0.tar.gz --install-root /ABS/NEW_INSTALL --data-root /ABS/NEW_DATA
-/ABS/NEW_INSTALL/bin/social-lurker profile create --label=娱乐
+/ABS/NEW_INSTALL/bin/social-lurker --profile=娱乐 profile create
 /ABS/NEW_INSTALL/bin/social-lurker config set-key
 ```
 
@@ -65,3 +65,5 @@ PY
 ```
 
 此工具沿用备份、全 profile 核验和原子切换，不改变原目录/数据根/凭据。只在用户授权升级且新正式包可用时执行；本次仅在临时目录验证。
+
+v0.5.3 使用者命名：新安装 registry2，无自动编号；旧 registry1 可读取，显式创建新空间才原子转换。数据库 schema1 保持，旧 profile 路径与升级恢复兼容；不能用旧程序读取转换后的 registry2。
