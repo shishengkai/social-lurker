@@ -15,7 +15,7 @@ from social_lurker.profiles import FileRegistry
 root, mode = Path(sys.argv[1]), sys.argv[2]
 registry = FileRegistry(root / "data")
 if not registry.path.exists():
-    profile = registry.create("子进程空间")
+    profile = registry.create("p0001", "子进程空间")
     db = Database(profile.db_path, profile.profile_id)
     db.upsert_page(Author("douyin", "a", "甲"), [], baseline=True)
     db.close()

@@ -254,12 +254,12 @@ def restore_before_commit(root, plan):
             "UPGRADE_FAILED",
         )
     for profile, entry in zip(profiles, plan["profiles"], strict=True):
-        p = backup / f"{profile.profile_id}.sqlite"
+        p = backup / profile.backup_name
         require(digest(p) == entry["sha256"], "UPGRADE_FAILED")
         db = Database(p, profile.profile_id, create=False, supported_schema=entry["schema"])
         db.close()
     for profile in profiles:
-        with sqlite3.connect(backup / f"{profile.profile_id}.sqlite") as src:
+        with sqlite3.connect(backup / profile.backup_name) as src:
             with sqlite3.connect(profile.db_path) as dst:
                 src.backup(dst)
     atomic_json(root / "current.json", plan["old"])
@@ -347,7 +347,7 @@ def apply_package(root, archive, *, expected=None, fault=lambda stage: None):
         try:
             schema = db.connection.execute("PRAGMA user_version").fetchone()[0]
             require(manifest["schema_min"] <= schema <= manifest["schema_target"], "UPGRADE_FAILED")
-            p = backup / f"{profile.profile_id}.sqlite"
+            p = backup / profile.backup_name
             with sqlite3.connect(p) as dst:
                 db.connection.backup(dst)
             entries.append({"id": profile.profile_id, "schema": schema, "sha256": digest(p)})

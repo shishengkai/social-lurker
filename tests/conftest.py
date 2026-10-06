@@ -46,7 +46,7 @@ def work(
 @pytest.fixture
 def env(tmp_path):
     registry = FileRegistry(tmp_path / "data")
-    profile = registry.create("甲的空间")
+    profile = registry.create("p0001", "甲的空间")
     secrets = FileSecrets(tmp_path / "credentials.json", {"TIKHUB_API_KEY": "fixture-only"})
     db = Database(profile.db_path, profile.profile_id)
     stream, stats = io.StringIO(), summary()

@@ -38,13 +38,14 @@ def test_file_priority_unconfigured_env_empty_invalid(tmp_path):
     assert error.value.code == "CREDENTIAL_MISSING"
 
 
-def test_registry_auto_ids_no_default_labels_are_not_paths(tmp_path):
+def test_registry_caller_names_no_default_ids_are_not_paths(tmp_path):
     registry = FileRegistry(tmp_path)
     one = registry.create("../中文 空间 --help")
     two = registry.create("同名")
-    assert (one.profile_id, two.profile_id) == ("p0001", "p0002")
-    assert one.db_path == tmp_path / "profiles/p0001/state.sqlite"
-    assert [p.profile_id for p in registry.list()] == ["p0001", "p0002"]
+    assert (one.profile_id, two.profile_id) == ("../中文 空间 --help", "同名")
+    assert one.db_path.parent.parent == tmp_path / "profiles"
+    assert "中文" not in str(one.db_path)
+    assert [p.profile_id for p in registry.list()] == ["../中文 空间 --help", "同名"]
     with pytest.raises(LurkerError):
         registry.get("p0000")
     for value in ('{"profiles":[]}', "null", '{"schema_version":1,"next_id":1,"profiles":[]}'):

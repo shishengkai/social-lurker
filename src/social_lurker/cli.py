@@ -34,7 +34,7 @@ def parser():
         prog="social-lurker", description=f"盯梢者 {__version__}：作品元信息 CLI。全局选项放在命令前。"
     )
     p.add_argument("--version", action="version", version=__version__)
-    p.add_argument("--profile", help="业务命令必需，稳定编号，例如 p0001")
+    p.add_argument("--profile", help="业务与 profile create 必需，调用者自选字符串")
     p.add_argument("--format", choices=("jsonl", "json"), default="jsonl")
     p.add_argument("--data-root", type=Path, default=DEFAULT_DATA)
     p.add_argument("--install-root", type=Path, default=DEFAULT_INSTALL)
@@ -49,9 +49,9 @@ def parser():
     unfollow.add_argument("--platform", choices=sorted(PLATFORMS), required=True)
     unfollow.add_argument("--author-id", required=True)
     sub.add_parser("check", help="从首页进行有限增量查询")
-    profiles = sub.add_parser("profile", help="自动编号与显示标签")
+    profiles = sub.add_parser("profile", help="自定义名称与显示标签")
     actions = profiles.add_subparsers(dest="action", required=True, parser_class=Parser)
-    actions.add_parser("create").add_argument("--label", required=True)
+    actions.add_parser("create").add_argument("--label")
     actions.add_parser("list")
     config = sub.add_parser("config", help="配置共享凭据，不输出密钥")
     actions = config.add_subparsers(dest="action", required=True, parser_class=Parser)
@@ -100,11 +100,14 @@ def _run(
         command = args.command + ("." + args.action if hasattr(args, "action") else "")
         output.common.update(
             command=command,
-            profile_id=args.profile if args.command in {"add", "list", "unfollow", "check"} else None,
+            profile_id=args.profile
+            if args.command in {"add", "list", "unfollow", "check"}
+            or (args.command == "profile" and args.action == "create")
+            else None,
         )
         if args.command == "check":
             scan_complete = False
-        if args.command in {"profile", "config", "upgrade"}:
+        if args.command in {"config", "upgrade"} or (args.command == "profile" and args.action == "list"):
             require(args.profile is None, "INPUT_INVALID")
         else:
             require(args.profile is not None, "INPUT_INVALID")
@@ -138,7 +141,7 @@ def _run(
                 payload = upgrade.check(root) if args.action == "check" else upgrade.apply(root, args.version)
             elif args.command == "profile":
                 if args.action == "create":
-                    profile = registry.create(args.label)
+                    profile = registry.create(args.profile, args.label)
                     payload = {"profile_id": profile.profile_id, "label": profile.label}
                 else:
                     payload = {
