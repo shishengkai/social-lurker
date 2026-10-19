@@ -74,7 +74,7 @@ def test_refuse_wrong_database_without_rewriting(env, variant):
     else:
         with sqlite3.connect(path) as c:
             if variant == "higher":
-                c.execute("PRAGMA user_version=2")
+                c.execute("PRAGMA user_version=99")
             elif variant == "wrong_profile":
                 c.execute("UPDATE meta SET value='other'")
             else:

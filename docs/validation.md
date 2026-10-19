@@ -72,3 +72,37 @@ codex/named-profiles 基于正式 0.5.2。189 项 pytest、ruff/格式、diff �
 捕获响应中断和无效 HTTP 状态行为 NETWORK_ERROR，保留完整错误/完成记录和既有有界重试，不使用部分页面、不放宽身份或页面校验。增加 4 项回归；193 项测试、静态检查及临时安装/合成升级重新验收。合成迁移目标改为 0.5.5/schema2，与正式 0.5.4/schema1 区分。
 
 清理本机 skills/、vendor/ 空目录及 .DS_Store；这些残留没有被 Git 跟踪，也从未包含在当前 CLI 包内。旧实例、.local 数据、凭据、备份和既有发行资产保留。Git/CI/公开资产与真实 0.5.3→0.5.4 升级验收以 v0.5.4 发行说明及 brain CURRENT 为准。此次不重新调用付费 API 或升级 Grok。
+
+## 三平台 adapter 本地验收（2026-10-19，未发布0.6.0）
+
+分支 `codex/more-platform-adapters`，基于正式0.5.4/main `911731e015ffb013b4c0263782ac781b79b437a6`。软件开发版本0.6.0、数据库schema2，输出schema1、registry2不变；正式版仍0.5.4。本节覆盖本地实现与验收，不代表 Git/CI/软件发布或 Grok 验收。
+
+### 本地工程验证
+
+240项 pytest 全通过；ruff检查/格式、uv锁检查、git diff --check通过。临时安装与合成0.6.1/schema3升级冒烟通过，常规测试/冒烟供应商请求0。新增用例覆盖三平台路由/响应身份/续页、公众号多图文ID与长链接冲突、B站联合投稿的详情证明与未知归属拒绝、YouTube两路分页/去重/一边失败整页不提交，以及schema1→2逐行保全和提交点前后恢复。
+
+另以 SHA256 校验过的公开正式0.5.4包创建临时旧实例：原版升级器拒绝本次平台约束扩展并保持0.5.4；随后新版桥接事务成功升级到本地0.6.0。两个自选profile的authors/works/meta逐行一致，registry原字节、测试凭据摘要不变，integrity_check=ok、foreign_key_check为空，旧版本及两次事务备份保留；新入口报告0.6.0。没有修改实际安装。
+
+### 用户授权的真实链接验证
+
+使用当前正常 FileSecrets 和生产CLI/adapter调用链，默认1RPS、retries=0，临时profile/数据库；不保存认证头、密钥、供应商正文或媒体。
+
+| 公开输入链接 | 识别结果 | 最后一轮 add |
+| --- | --- | --- |
+| https://mp.weixin.qq.com/s/TSNQKkRpN1qbKsT7BvzqIw | 量子位 / gh_114e76fd6e5d | exit0，24条基线，2请求 |
+| https://www.bilibili.com/video/BV1gKJ86JEuP | 老番茄 / 546195 | exit0，18条本人主发基线，4请求；2条联合投稿经详情核实后排除 |
+| https://youtu.be/dQw4w9WgXcQ | Rick Astley / UCuAXFkgsw1L7xaCfnd5JJOw | exit0，视频/Shorts合计78条基线，3请求 |
+
+最后一轮 add 均只有result与complete，无work。随后同profile `check`：exit0、status=ok、scan_complete=true、authors_total/succeeded=3/3、failed/unchecked=0、pages_committed=3、new_works=0、requests=6，唯一complete。证明真实首页登记和随后无新增查询可运行，不把无新增验收当作真实新发布通知验收。
+
+另限定前两页检查原生adapter的响应结构和游标：公众号24/28条（2请求），B站排除他人主发项后18/17条（7请求，含详情证明），YouTube两路合计78/78条（4请求）；下一游标发生变化。没有遍历全部历史，业务add仍只取首页。没有实测完整长链分页覆盖或等待作者发布新作。
+
+本轮研究/探测/诊断/重跑累计57次TikHub请求：最初探测8，首轮CLI7，联合投稿诊断1，第二轮CLI6，定点诊断7，最终CLI15，前两页结构检查13。首轮发现并修正B站联合投稿归属问题；第二轮B站列表与YouTube详情各一次PAGE_INVALID，后续请求成功，没有放宽校验或添加自动循环重试。这些短时成功不证明上游长期稳定，未核算供应商实际扣费。
+
+### 未验证及交付边界
+
+未等待真实新发布；新增输出/混合页停止/详情冲突等由离线回归覆盖。未覆盖所有公众号、会员/私密/删除/地区限制、直播归档或所有短链形态；YouTube只查询普通视频与Shorts，日期不够精确时保持null。未运行本次分支Linux/Python3.13 CI、未操作Grok、未升级/迁移任何实际旧实例。未commit、push、创建PR、打tag或发布0.6.0。
+
+## v0.6.0 发布准备
+
+用户已授权发布及通知王思聪安排盯梢者升级。README正式安装目标更新为0.6.0，下载校验与首次安装分开；0.5.x升级必须从已校验包导入新工具，持独占锁并传正式expected manifest，全部profile纳入同一事务。同安装根只升级一次，不重建profile或改变凭据/日程。240项测试、静态/格式检查、临时安装与合成升级冒烟通过；公开正式资产安装/桥接验收和CI结果以发行记录为准。

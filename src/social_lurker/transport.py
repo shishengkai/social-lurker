@@ -22,6 +22,9 @@ USER_INFO = "/tikhub/user/get_user_info"
 ENDPOINT_INFO = "/tikhub/user/get_endpoint_info"
 DY = "/douyin/app/v3/"
 WX = "/wechat_channels/v2/"
+MP = "/wechat_mp/v2/"
+BL = "/bilibili/web/"
+YT = "/youtube/web_v2/"
 ENDPOINTS = {
     DY + name: "GET"
     for name in (
@@ -39,6 +42,30 @@ ENDPOINTS.update(
 )
 
 ENDPOINTS.update({USER_INFO: "GET", ENDPOINT_INFO: "GET"})
+ENDPOINTS.update({MP + name: "POST" for name in ("fetch_article_detail_h5", "fetch_account_articles")})
+ENDPOINTS.update(
+    {
+        BL + name: "GET"
+        for name in (
+            "fetch_user_profile",
+            "fetch_user_post_videos_v2",
+            "fetch_one_video",
+            "fetch_video_detail",
+        )
+    }
+)
+ENDPOINTS.update(
+    {
+        YT + name: "GET"
+        for name in (
+            "get_channel_id",
+            "get_channel_description",
+            "get_channel_videos",
+            "get_channel_shorts",
+            "get_video_info",
+        )
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -134,7 +161,9 @@ class Transport:
 
         platform, validated = source_link(url)
         require(
-            platform == "douyin" and urlsplit(validated).hostname == "v.douyin.com", "SOURCE_LINK_INVALID"
+            (platform == "douyin" and urlsplit(validated).hostname == "v.douyin.com")
+            or (platform == "bilibili" and urlsplit(validated).hostname == "b23.tv"),
+            "SOURCE_LINK_INVALID",
         )
         if self.stopped:
             raise LurkerError(self.stopped)

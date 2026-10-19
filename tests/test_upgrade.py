@@ -13,7 +13,7 @@ from conftest import ROOT, work
 
 from social_lurker import __version__
 from social_lurker.adapters.base import Author
-from social_lurker.db import Database
+from social_lurker.db import SCHEMA_VERSION, Database
 from social_lurker.errors import LurkerError
 from social_lurker.locks import lock
 from social_lurker.package import extract_package, verify_directory
@@ -35,7 +35,9 @@ def make_package(tmp, version="0.5.0", schema=1, *, overrides=None, bad_sql=Fals
                     f'__version__ = "{__version__}"'.encode(), f'__version__ = "{version}"'.encode()
                 )
             if path.name == "db.py":
-                data = data.replace(b"SCHEMA_VERSION = 1", f"SCHEMA_VERSION = {schema}".encode())
+                data = data.replace(
+                    f"SCHEMA_VERSION = {SCHEMA_VERSION}".encode(), f"SCHEMA_VERSION = {schema}".encode()
+                )
             files[path.relative_to(ROOT).as_posix()] = data
     if schema == 2:
         files["migrations/1.sql"] = (
@@ -77,7 +79,7 @@ def installed(tmp_path, installer):
     registry = FileRegistry(data)
     for pid, label in (("p0001", "甲"), ("p0002", "乙")):
         profile = registry.create(pid, label)
-        db = Database(profile.db_path, profile.profile_id)
+        db = Database(profile.db_path, profile.profile_id, supported_schema=1)
         db.upsert_page(Author("douyin", "author-a", "甲"), [work("old")], baseline=True)
         db.close()
     return root, registry, archive
@@ -271,7 +273,7 @@ def test_explicit_stable_apply_and_noop(installed, tmp_path):
     assert (root / "versions/0.5.0").is_dir() and list((root / "backups").glob("*/completed.json"))
     assert not (root / "upgrade-state.json").exists()
     for profile in registry.list():
-        db = Database(profile.db_path, profile.profile_id)
+        db = Database(profile.db_path, profile.profile_id, supported_schema=1)
         assert db.authors()[0]["works_count"] == 1
         db.close()
 

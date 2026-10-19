@@ -203,6 +203,11 @@ def migrate(path, pid, source, manifest, version_root):
             name = manifest.get("migrations", {}).get(str(source))
             require(name is not None, "UPGRADE_FAILED")
             sql = (version_root / name).read_text()
+            # The platform CHECK expansion needs a table rebuild. Only this exact bundled,
+            # data-preserving migration bypasses the general additive-SQL restriction.
+            platform_expansion = (
+                source == 1 and sql == Path(__file__).with_name("platform_migration.sql").read_text()
+            )
             # Declarative first-generation migrations are additive; no implicit data deletion.
             statements, pending = [], ""
             for character in sql:
@@ -214,7 +219,8 @@ def migrate(path, pid, source, manifest, version_root):
             with db.transaction() as conn:
                 for statement in statements:
                     require(
-                        re.match(
+                        platform_expansion
+                        or re.match(
                             r"(?is)^ALTER\s+TABLE\s+(authors|works)\s+ADD\s+(COLUMN\s+)?\w+\s+", statement
                         )
                         or re.match(r"(?is)^CREATE\s+(UNIQUE\s+)?INDEX\s+", statement),

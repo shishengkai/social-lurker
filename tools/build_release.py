@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from social_lurker import __version__
+from social_lurker.db import SCHEMA_VERSION
 from social_lurker.util import digest
 
 
@@ -34,17 +35,20 @@ def build(root, output, *, development=False):
         "source_state": "local-development" if development else "clean",
         "python_min": [3, 12],
         "schema_min": 1,
-        "schema_max": 1,
-        "schema_target": 1,
-        "migrations": {},
+        "schema_max": SCHEMA_VERSION,
+        "schema_target": SCHEMA_VERSION,
+        "migrations": {"1": "migrations/1.sql"},
         "files": {p.relative_to(root).as_posix(): digest(p) for p in files},
     }
+    migration = root / "src/social_lurker/platform_migration.sql"
+    manifest["files"]["migrations/1.sql"] = digest(migration)
     path = output / f"social-lurker-{__version__}.manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True) + "\n")
     archive = output / f"social-lurker-{__version__}.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         for file in files:
             tar.add(file, arcname=file.relative_to(root).as_posix(), recursive=False)
+        tar.add(migration, arcname="migrations/1.sql", recursive=False)
         tar.add(path, arcname="manifest.json", recursive=False)
     return archive
 

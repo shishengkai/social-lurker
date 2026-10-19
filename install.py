@@ -12,6 +12,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from social_lurker.config import DEFAULT_DATA, DEFAULT_INSTALL
+from social_lurker.db import SCHEMA_VERSION
 from social_lurker.errors import LurkerError, require
 from social_lurker.locks import lock
 from social_lurker.package import extract_package
@@ -35,7 +36,7 @@ def install(package, install_root, data_root):
         with tempfile.TemporaryDirectory(dir=root, prefix=".install-") as tmp:
             candidate = Path(tmp) / "candidate"
             manifest = extract_package(package, candidate)
-            require(manifest["schema_target"] == 1, "UPGRADE_FAILED")
+            require(manifest["schema_target"] in {1, SCHEMA_VERSION}, "UPGRADE_FAILED")
             candidate_check(candidate, manifest, [])
             version_root = root / "versions" / manifest["version"]
             version_root.parent.mkdir()
