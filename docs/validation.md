@@ -56,3 +56,19 @@ codex/named-profiles 基于正式 0.5.2。189 项 pytest、ruff/格式、diff �
 ## v0.5.3 发布前验收
 
 189 项测试、ruff/格式、安装/合成升级与正式旧包兼容通过；数据库/output schema1 保持，新 registry2 在创建时写入，旧 registry1 升级不改写。合成迁移目标为 0.5.4/schema2，非已发布软件。Git/CI/正式公开资产验收见 v0.5.3 发行说明和 brain CURRENT。
+
+## 本机真实接口调试与响应中断处理（2026-10-07，未发布）
+
+用户授权向 Grok Bot 获取公开作者 ID 并在本机调试。0.5.3 同一首页参数（count=20/max_cursor=0/sort_type=0/channel=normal）在本机读取飞天小麻花 21 条、学习失败主页样本 20 条、孙老养生 23 条，HTTP/root code=200、status_code=0，现有严格解析通过。三样本未复现 Grok 的 PAGE_INVALID；不同运行时间、网络及凭据来源不能作为相同环境，未确定历史故障根因，也未证明远端恢复。
+
+总计 5 次真实 TikHub 请求：两作者首页、孙老作品详情与首页、首页中断后一次显式重测。其中孙老首次首页 chunked 响应发生 IncompleteRead，部分字节丢弃，不作为页面使用。实际计费以供应商账单为准，不把请求数当收费次数。
+
+本地修复：捕获 HTTPException（包含 IncompleteRead、BadStatusLine），映射 NETWORK_ERROR；默认零自动重试，显式配置的有界网络重试保持。公开短链网络异常同样返回类型化错误。没有放宽页面/身份校验，没有写入本机或远端业务数据库。
+
+193 项 pytest、ruff check/format、临时安装和合成升级冒烟通过，冒烟供应商请求为零。分支 codex/douyin-network-debug；未 commit/push/发布/部署，软件版本仍为 0.5.3。响应中断修复不是历史 PAGE_INVALID 的根因修复。
+
+## v0.5.4 发布前验收（2026-10-19）
+
+捕获响应中断和无效 HTTP 状态行为 NETWORK_ERROR，保留完整错误/完成记录和既有有界重试，不使用部分页面、不放宽身份或页面校验。增加 4 项回归；193 项测试、静态检查及临时安装/合成升级重新验收。合成迁移目标改为 0.5.5/schema2，与正式 0.5.4/schema1 区分。
+
+清理本机 skills/、vendor/ 空目录及 .DS_Store；这些残留没有被 Git 跟踪，也从未包含在当前 CLI 包内。旧实例、.local 数据、凭据、备份和既有发行资产保留。Git/CI/公开资产与真实 0.5.3→0.5.4 升级验收以 v0.5.4 发行说明及 brain CURRENT 为准。此次不重新调用付费 API 或升级 Grok。

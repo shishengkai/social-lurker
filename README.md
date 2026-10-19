@@ -2,7 +2,7 @@
 
 给 Bot 或 AI agent 的作品动态查询 CLI。支持抖音作者主页/作品链接、可识别的抖音短链，以及微信视频号 `sph` 分享链接；输出作者与作品元信息。**安装和配置从下面开始，无需先克隆仓库、构建源码、安装 skill 或准备开发环境。**
 
-当前正式版本：[v0.5.3](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.3)。运行环境：**macOS 或 Linux，Python 3.12+**；运行依赖只有 Python 标准库，Windows 暂不支持。
+当前正式版本：[v0.5.4](https://github.com/shishengkai/social-lurker/releases/tag/v0.5.4)。运行环境：**macOS 或 Linux，Python 3.12+**；运行依赖只有 Python 标准库，Windows 暂不支持。
 
 ## 给 Bot / agent 的执行说明
 
@@ -29,13 +29,13 @@
 | 共享凭据 | `~/.config/social-lurker/credentials.json` |
 | 命令入口 | `~/.local/opt/social-lurker/bin/social-lurker` |
 
-v0.5.3 的默认目录与构建资产统一使用 `social-lurker`。新资产为 `social-lurker-VERSION.tar.gz` 与 `.manifest.json`。
+v0.5.4 的默认目录与构建资产统一使用 `social-lurker`。新资产为 `social-lurker-VERSION.tar.gz` 与 `.manifest.json`。
 
 已有安装不自动重命名或迁移。继续调用原安装位置的入口，它仍绑定原数据根；凭据用 `--credentials-file` 指定原文件。新程序能验证历史发行资产，但 v0.5.1 的旧升级器无法识别新资产名称，首次跨命名升级需使用经校验的新源码升级工具（见安装文档）。
 
 安装器只接受空白安装/数据目录。已有这些目录时先查明来源；已有纯 CLI 请使用升级步骤，旧版本实例不要原地覆盖。
 
-下面下载固定的不可变 v0.5.3 资产，**先校验，再解包和执行安装器**。无需 Git、GitHub CLI、uv、pip 或 sudo。
+下面下载固定的不可变 v0.5.4 资产，**先校验，再解包和执行安装器**。无需 Git、GitHub CLI、uv、pip 或 sudo。
 
 ```sh
 set -eu
@@ -45,13 +45,13 @@ command -v curl >/dev/null
 command -v tar >/dev/null
 
 SL_PACKAGE_DIR="$(mktemp -d)"
-SL_RELEASE_URL='https://github.com/shishengkai/social-lurker/releases/download/v0.5.3'
-curl --fail --location --retry 3 "$SL_RELEASE_URL/social-lurker-0.5.3.tar.gz" \
-  --output "$SL_PACKAGE_DIR/social-lurker-0.5.3.tar.gz"
-curl --fail --location --retry 3 "$SL_RELEASE_URL/social-lurker-0.5.3.manifest.json" \
-  --output "$SL_PACKAGE_DIR/social-lurker-0.5.3.manifest.json"
+SL_RELEASE_URL='https://github.com/shishengkai/social-lurker/releases/download/v0.5.4'
+curl --fail --location --retry 3 "$SL_RELEASE_URL/social-lurker-0.5.4.tar.gz" \
+  --output "$SL_PACKAGE_DIR/social-lurker-0.5.4.tar.gz"
+curl --fail --location --retry 3 "$SL_RELEASE_URL/social-lurker-0.5.4.manifest.json" \
+  --output "$SL_PACKAGE_DIR/social-lurker-0.5.4.manifest.json"
 
-curl --fail --location 'https://api.github.com/repos/shishengkai/social-lurker/releases/tags/v0.5.3' \
+curl --fail --location 'https://api.github.com/repos/shishengkai/social-lurker/releases/tags/v0.5.4' \
   --output "$SL_PACKAGE_DIR/release.json"
 "$PYTHON" - "$SL_PACKAGE_DIR" <<'PY'
 import hashlib
@@ -62,17 +62,17 @@ import urllib.request
 from pathlib import Path
 root = Path(sys.argv[1])
 release = json.loads((root / "release.json").read_text())
-assert release["tag_name"] == "v0.5.3" and release["immutable"] is True
+assert release["tag_name"] == "v0.5.4" and release["immutable"] is True
 assert release["draft"] is False and release["prerelease"] is False
-base = "https://github.com/shishengkai/social-lurker/releases/download/v0.5.3/"
-for name in ("social-lurker-0.5.3.tar.gz", "social-lurker-0.5.3.manifest.json"):
+base = "https://github.com/shishengkai/social-lurker/releases/download/v0.5.4/"
+for name in ("social-lurker-0.5.4.tar.gz", "social-lurker-0.5.4.manifest.json"):
     matches = [a for a in release["assets"] if a["name"] == name]
     assert len(matches) == 1 and matches[0]["browser_download_url"] == base + name
     digest = matches[0]["digest"]
     assert re.fullmatch(r"sha256:[a-f0-9]{64}", digest)
     assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest[7:], "SHA256 校验失败"
 api = "https://api.github.com/repos/shishengkai/social-lurker"
-path = "/git/ref/tags/v0.5.3"
+path = "/git/ref/tags/v0.5.4"
 for _ in range(5):
     request = urllib.request.Request(api + path, headers={"Accept":"application/vnd.github+json"})
     with urllib.request.urlopen(request, timeout=30) as response:
@@ -84,23 +84,23 @@ for _ in range(5):
     path = "/git/tags/" + obj["sha"]
 else:
     raise SystemExit("无法解析正式 tag")
-m = json.loads((root / "social-lurker-0.5.3.manifest.json").read_text())
+m = json.loads((root / "social-lurker-0.5.4.manifest.json").read_text())
 assert (m["product"], m["distribution"], m["version"], m["source_state"], m["git_sha"]) == (
-    "social-lurker", "cli", "0.5.3", "clean", obj["sha"])
+    "social-lurker", "cli", "0.5.4", "clean", obj["sha"])
 print("正式不可变发行、资产摘要与精确 tag 校验通过")
 PY
 
 mkdir "$SL_PACKAGE_DIR/unpacked"
-tar -xzf "$SL_PACKAGE_DIR/social-lurker-0.5.3.tar.gz" -C "$SL_PACKAGE_DIR/unpacked"
+tar -xzf "$SL_PACKAGE_DIR/social-lurker-0.5.4.tar.gz" -C "$SL_PACKAGE_DIR/unpacked"
 "$PYTHON" "$SL_PACKAGE_DIR/unpacked/install.py" \
-  --package "$SL_PACKAGE_DIR/social-lurker-0.5.3.tar.gz" --install-root "$HOME/.local/opt/social-lurker" --data-root "$HOME/.local/share/social-lurker"
+  --package "$SL_PACKAGE_DIR/social-lurker-0.5.4.tar.gz" --install-root "$HOME/.local/opt/social-lurker" --data-root "$HOME/.local/share/social-lurker"
 
 SL_CLI="$HOME/.local/opt/social-lurker/bin/social-lurker"
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" --version
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" --help
 ```
 
-成功时安装器返回 `installed: true`，版本为 `0.5.3`。安装完成后始终使用上述 `SL_CLI` 入口，它绑定安装时选定的 Python 和数据根；不要删除该 Python 环境。临时下载目录不参与后续运行。
+成功时安装器返回 `installed: true`，版本为 `0.5.4`。安装完成后始终使用上述 `SL_CLI` 入口，它绑定安装时选定的 Python 和数据根；不要删除该 Python 环境。临时下载目录不参与后续运行。
 
 要使用其他目录，在安装命令末尾加 `--install-root /绝对路径/程序 --data-root /绝对路径/数据`，随后把 `SL_CLI` 指向所选程序目录下的 `bin/social-lurker`。凭据路径可通过命令前的全局参数 `--credentials-file /绝对路径/credentials.json` 指定。
 
@@ -204,16 +204,16 @@ SL_CLI="$HOME/.local/opt/social-lurker/bin/social-lurker"
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" --version
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" profile list
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" upgrade check
-"$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" upgrade apply --version 0.5.3
+"$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" upgrade apply --version 0.5.4
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" --version
 "$SL_CLI" --credentials-file "$HOME/.config/social-lurker/credentials.json" profile list
 ```
 
-**v0.5.0/v0.5.1 → v0.5.3：** 按上面的下载、摘要/tag 校验和解包步骤取得正式包，跳过安装器。设置原安装根，使用已验证包内的升级代码执行事务（不会更改原数据根或凭据）：
+**v0.5.0/v0.5.1 → v0.5.4：** 按上面的下载、摘要/tag 校验和解包步骤取得正式包，跳过安装器。设置原安装根，使用已验证包内的升级代码执行事务（不会更改原数据根或凭据）：
 
 ```sh
 SL_EXISTING_ROOT="$HOME/.local/opt/social-lurker-cli"  # 改为实际原安装根
-PYTHONPATH="$SL_PACKAGE_DIR/unpacked/src" "$PYTHON" - "$SL_EXISTING_ROOT" "$SL_PACKAGE_DIR/social-lurker-0.5.3.tar.gz" <<'PY'
+PYTHONPATH="$SL_PACKAGE_DIR/unpacked/src" "$PYTHON" - "$SL_EXISTING_ROOT" "$SL_PACKAGE_DIR/social-lurker-0.5.4.tar.gz" <<'PY'
 import sys
 from pathlib import Path
 from social_lurker.locks import lock
@@ -229,7 +229,7 @@ SL_CLI="$SL_EXISTING_ROOT/bin/social-lurker"
 # 继续用 --credentials-file 指定原凭据文件。
 ```
 
-升级会验证正式不可变 Release、tag、manifest 与包摘要；保留 profile、数据、配置、旧程序版本和备份。0.5.0/0.5.1/0.5.2→0.5.3 不需要数据库 schema 迁移；新 registry2 在显式创建新名称时写入，旧 registry1 升级时原样保留，旧程序不能读取转换后的 registry2。只有显式 upgrade 查询/应用软件版本，日常业务不自动更新；不保留 Star。旧 0.3.6 实例不是这个升级流程的输入，不迁移或清理它。
+升级会验证正式不可变 Release、tag、manifest 与包摘要；保留 profile、数据、配置、旧程序版本和备份。0.5.0/0.5.1/0.5.2/0.5.3→0.5.4 不需要数据库 schema 迁移；新 registry2 在显式创建新名称时写入，旧 registry1 升级时原样保留，旧程序不能读取转换后的 registry2。只有显式 upgrade 查询/应用软件版本，日常业务不自动更新；不保留 Star。旧 0.3.6 实例不是这个升级流程的输入，不迁移或清理它。
 
 ## 常见失败
 
@@ -257,6 +257,6 @@ uv run ruff format --check install.py src tests tools
 uv run python tools/smoke_install.py
 ```
 
-开发时显式指定独立安装/数据根。详见 [实现协议](docs/implementation.md)、[安装升级机制](docs/installation.md) 和 [验收记录](docs/validation.md)。规范来自关联 social-lurker-brain 的 0.5.0 开发文档；0.5.3 是其兼容补丁。
+开发时显式指定独立安装/数据根。详见 [实现协议](docs/implementation.md)、[安装升级机制](docs/installation.md) 和 [验收记录](docs/validation.md)。规范来自关联 social-lurker-brain 的 0.5.0 开发文档；0.5.4 是其兼容补丁。
 
-v0.5.3 发布前已通过 189 项本地测试、安装与合成升级冒烟。正式 CI/资产验收以发行页与 brain CURRENT 记录为准。公开抖音作者短链解析已实测；付费平台接口完整覆盖、Grok 宿主网关恢复与实际增量仍待使用验证。
+v0.5.4 发布前已通过 193 项本地测试、安装与合成升级冒烟。正式 CI/资产验收以发行页与 brain CURRENT 记录为准。公开抖音作者短链解析已实测；此前有限样本的真实首页请求、Grok 重试及一次增量已成功；完整平台覆盖与长期稳定性仍待验证。

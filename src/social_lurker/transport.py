@@ -1,5 +1,6 @@
 """Fixed TikHub origin, serial pacing, bounded retries, sanitized typed errors."""
 
+import http.client
 import json
 import socket
 import time
@@ -152,7 +153,7 @@ class Transport:
             raise LurkerError(
                 "REQUEST_TIMEOUT" if isinstance(cause.reason, TimeoutError) else "NETWORK_ERROR"
             ) from None
-        except OSError:
+        except (OSError, http.client.HTTPException):
             raise LurkerError("NETWORK_ERROR") from None
         if result.status in {403, 429}:
             self.stopped = "HTTP_BLOCKED" if result.status == 403 else "RATE_LIMITED"
@@ -237,7 +238,7 @@ class Transport:
                 error = LurkerError(
                     "REQUEST_TIMEOUT" if isinstance(cause.reason, TimeoutError) else "NETWORK_ERROR"
                 )
-            except OSError:
+            except (OSError, http.client.HTTPException):
                 error = LurkerError("NETWORK_ERROR")
             else:
                 status = result.status

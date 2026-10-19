@@ -1,3 +1,4 @@
+import http.client
 import json
 import socket
 from datetime import datetime, timedelta, timezone
@@ -76,6 +77,8 @@ def test_serial_rate_all_endpoints_and_params(tmp_path):
         (Response(302, None), "PAGE_INVALID"),
         (Response(500, None), "NETWORK_ERROR"),
         (socket.timeout(), "REQUEST_TIMEOUT"),
+        (http.client.IncompleteRead(b"fixture-private", 100), "NETWORK_ERROR"),
+        (http.client.BadStatusLine("fixture-private"), "NETWORK_ERROR"),
     ],
 )
 def test_errors_never_empty_or_leak_and_global_stops(tmp_path, response, code):
@@ -102,6 +105,30 @@ def test_429_wait_once_then_stop_and_bounded_retries(tmp_path):
     date = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=10), usegmt=True)
     assert 8 <= retry_after({"Retry-After": date}) <= 10
     assert retry_after({"Retry-After": "invalid"}) == 1
+
+
+def test_incomplete_response_retry_discards_partial_page(tmp_path):
+    t, _, calls, stats = transport(
+        tmp_path,
+        [http.client.IncompleteRead(b"fixture-private", 100), ok({})],
+        Config(retries=1),
+    )
+    assert t.call(DY + "fetch_user_post_videos", {}) == {}
+    assert len(calls) == 2 and stats["requests"] == 2
+
+
+def test_public_redirect_protocol_error_is_typed(tmp_path):
+    t, _, calls, stats = transport(tmp_path, [])
+
+    def broken(*args):
+        raise http.client.BadStatusLine("fixture-private")
+
+    t.share_send = broken
+    with pytest.raises(LurkerError) as caught:
+        t.redirect("https://v.douyin.com/example/")
+    assert caught.value.code == "NETWORK_ERROR"
+    assert "fixture-private" not in json.dumps(caught.value.public())
+    assert not calls and stats["requests"] == 0
 
 
 def dy_item(wid="9007199254740999", aid="a"):
