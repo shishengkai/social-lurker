@@ -123,7 +123,7 @@ def test_upgrade_safe_backup_and_recovery_for_arbitrary_ids(tmp_path, installer,
     archive, _ = make_package(tmp_path / "old", version="0.5.0")
     installer(archive, root, data)
     p = FileRegistry(data).create("../../escape")
-    db = Database(p.db_path, p.profile_id)
+    db = Database(p.db_path, p.profile_id, supported_schema=1)
     db.close()
     target, _ = make_package(tmp_path / "new", version="0.5.1", schema=2)
 

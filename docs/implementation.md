@@ -5,7 +5,7 @@
 | 模块 | 职责 |
 | --- | --- |
 | cli/output | 参数、结构化错误、JSONL flush、JSON spool、唯一 complete |
-| profiles/config | 自动 ID、显式空间、SecretSource、文件优先 |
+| profiles/config | 自选字符串 ID、显式空间、SecretSource、文件优先 |
 | db/service | SL50 新库、整页事务、基线、去重、unfollow/check |
 | adapters/transport | 两平台元信息、固定 origin、1 RPS、超时、有限重试/429 |
 | locks/package/upgrade | 安装/空间 OS 锁、摘要验证、备份、提交点、恢复 |
@@ -95,3 +95,15 @@ profile ID 是非空 UTF-8 字符串，最多 1024 字符，按原样区分；di
 新 registry schema_version=2，不含 next_id；新路径为 profiles/id-SHA256(UTF-8 ID)/state.sqlite。旧 registry1 只读加载仍严格验证原 next_id 与 pNNNN 路径；创建新名称时原子转换为 registry2，保留旧条目的原 ID、标签、路径，停止编号。旧数据库不改名/搬动，数据库 schema 和输出 schema 均仍为 1。新 registry2 不能交给旧程序读取。
 
 升级备份名采用已验证数据库目录名，避免把任意 ID 拼入路径，同时保留旧 pNNNN.sqlite 计划恢复兼容。创建与升级受原有 OS 锁保护；registry 损坏、路径篡改或符号链接拒绝猜测恢复。大小写、空白、Unicode 组合形式不同会生成不同空间。README 说明推荐 Bot/agent 使用永久唯一身份 ID，同名空间不提供所有权隔离。
+
+## 0.6.0：公众号、B站与 YouTube
+
+新增独立 `wechat_mp`（公众号）、`bilibili`、`youtube` adapter，沿用现有 Service 的首页基线、整页校验/事务、全新增才续页、JSONL/JSON、错误计数和显式 profile，不增加调度或正文/媒体存储。
+
+- 公众号：文章 H5 详情只读取账号身份；按 username 请求文章列表，校验 biz_username、count/is_end/next_offset 和长链接 mid/idx。作品 ID 为 `username:app_msg_id:idx`，防止跨账号或多图文批次冲突。列表返回 HTTP 原链接统一 HTTPS。无缺字段正文补抓。
+- B站：UP 资料或 BV/av 详情解析身份；V2 投稿固定最新优先，以 pn/ps/page.total 判尾。ID 用十进制 aid 字符串；校验 upMid。非本人主发项须额外核对视频 aid/bvid/owner/staff，证实本人为联合创作者才排除，且排除项不授权续页；未知归属整页失败。证明仅缓存在本次进程内。b23 短链只检查受限公共跳转，不发认证头。
+- YouTube：频道 ID/handle 或视频详情识别账号，普通视频与 Shorts 各取一页组成逻辑页，合并后按 video_id 去重。两路必须均有效才提交，不一边失败一边提交。游标为绑定 channel ID 的两路临时 continuation JSON，无持久化；结束的路不再请求。普通视频续页按官方结构可省 channel，由前页游标绑定。check 新作品至多补一次详情，验证 channelId；不下载格式/媒体。相对时间、无时区或仅日期保留 null。
+
+官方契约（2026-10-19核对）：[TikHub OpenAPI](https://api.tikhub.io/openapi.json)、[公众号 H5 详情](https://docs.tikhub.io/511928397e0)、[B站视频详情](https://docs.tikhub.io/327447217e0)、[YouTube 视频列表](https://docs.tikhub.io/419083089e0)、[Shorts](https://docs.tikhub.io/419083094e0)、[频道 ID](https://docs.tikhub.io/419083087e0)。固定 transport 白名单只新增上述对应端点，不接收任意 API URL。
+
+数据库 schema2 仅扩展 authors.platform CHECK；列、主键、外键、meta 与已有记录保持。schema1 SQL 原样保留供升级器读取；业务不静默迁移旧库。打包纳入精确 `migrations/1.sql`；新升级器只对此内置脚本开放事务内重建表，其余迁移仍限增加列/索引。所有 profile 先备份，逐库迁移与校验，沿用原子提交点及故障恢复。旧升级器拒绝重建表，需要新版升级工具桥接，不能直接复用旧版 upgrade apply。输出与 registry schema 不变。

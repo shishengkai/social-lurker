@@ -1,6 +1,6 @@
 # social-lurker CLI implementation
 
-当前软件版本 0.5.4；规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。
+当前软件发行目标 0.6.0（五平台，数据库 schema2、输出 schema1）；规范在关联 social-lurker-brain 的 Releases/04_CLI_0.5.0开发文档/。
 先检查分支、工作区和适用指南。功能开发在 codex/ 分支进行，通过 PR 合回 main；发布从固定、干净的合并提交构建。
 
 - 纯 Python 3.12+ 标准库 CLI；查询元信息。外围负责调度、展示、通知。
@@ -11,5 +11,5 @@
 - 日常命令不查版本；只有显式 upgrade 操作软件。最高正式候选无效即失败，不回退。
 - 历史源码保存在 Git；旧实例、数据库、备份、凭据和 .local 不导入、不清理。
 - 本地测试：uv run pytest -q；静态检查：uv run ruff check/format --check；安装冒烟：uv run python tools/smoke_install.py。
-- 测试与冒烟只用临时目录和离线 fixture，不调用 TikHub 或操作宿主。Grok 观察延至实际使用。
+- 常规测试与冒烟只用临时目录和离线 fixture，不调用 TikHub 或操作宿主。用户已为本次三平台 adapter 验收授权有限的真实链接测试；本次已另获授权发布并通知王思聪安排盯梢者升级；不扩展为任意付费调用或实例清理。
 - 发布要求用户明确授权，按提交、PR/合并、CI、固定 SHA 包、不可变 Release 分别验收。发布不自动授权付费 API、Grok 操作、部署或旧实例处置。

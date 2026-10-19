@@ -1,6 +1,6 @@
 CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
 CREATE TABLE authors (
- platform TEXT NOT NULL CHECK (platform IN ('douyin','wechat_channels')),
+ platform TEXT NOT NULL CHECK (platform IN ('douyin','wechat_channels','wechat_mp','bilibili','youtube')),
  author_id TEXT NOT NULL, author_name TEXT NOT NULL, profile_url TEXT,
  status TEXT NOT NULL CHECK (status IN ('active','unfollowed')),
  created_at TEXT NOT NULL, followed_at TEXT NOT NULL, unfollowed_at TEXT,

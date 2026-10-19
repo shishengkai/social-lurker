@@ -6,7 +6,7 @@ from .errors import LurkerError, require
 from .util import now
 
 APPLICATION_ID = 0x534C3530
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class Database:
@@ -26,10 +26,15 @@ class Database:
                 self.connection.execute("PRAGMA journal_mode=DELETE")
                 self.connection.execute("PRAGMA synchronous=FULL")
                 # DDL and identity are one atomic initialization; existing empty files are rejected.
-                sql = Path(__file__).with_name("schema.sql").read_text()
+                require(supported_schema in {1, SCHEMA_VERSION}, "DB_ERROR")
+                sql = (
+                    Path(__file__)
+                    .with_name("schema_v1.sql" if supported_schema == 1 else "schema.sql")
+                    .read_text()
+                )
                 self.connection.executescript("BEGIN IMMEDIATE;" + sql)
                 self.connection.execute(f"PRAGMA application_id={APPLICATION_ID}")
-                self.connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+                self.connection.execute(f"PRAGMA user_version={supported_schema}")
                 self.connection.execute("INSERT INTO meta VALUES ('profile_id',?)", (profile_id,))
                 self.connection.commit()
             self.validate(profile_id, supported_schema)

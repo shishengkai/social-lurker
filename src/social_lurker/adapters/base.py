@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from ..errors import require
 
-PLATFORMS = {"douyin", "wechat_channels"}
+PLATFORMS = {"douyin", "wechat_channels", "wechat_mp", "bilibili", "youtube"}
 
 
 def identity(value):

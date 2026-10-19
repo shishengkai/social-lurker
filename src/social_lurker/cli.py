@@ -10,9 +10,12 @@ from pathlib import Path
 
 from . import __version__, upgrade
 from .adapters.base import PLATFORMS, identity
+from .adapters.bilibili import Bilibili
 from .adapters.douyin import Douyin
 from .adapters.links import source_link
 from .adapters.wechat import Wechat
+from .adapters.wechat_mp import WechatMP
+from .adapters.youtube import Youtube
 from .config import DEFAULT_CREDENTIALS, DEFAULT_DATA, DEFAULT_INSTALL, Config, FileSecrets
 from .db import Database
 from .errors import LurkerError, require
@@ -172,7 +175,13 @@ def _run(
                 stack.callback(db.close)
                 if adapters is None:
                     transport = transport_factory(secrets, stats, config, before_request=output.ensure_open)
-                    adapters = {"douyin": Douyin(transport), "wechat_channels": Wechat(transport)}
+                    adapters = {
+                        "douyin": Douyin(transport),
+                        "wechat_channels": Wechat(transport),
+                        "wechat_mp": WechatMP(transport),
+                        "bilibili": Bilibili(transport),
+                        "youtube": Youtube(transport),
+                    }
                 service = Service(db, adapters, output, stats)
                 if args.command == "add":
                     platform, link = source_link(args.link)

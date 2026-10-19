@@ -27,14 +27,19 @@ def fixture_upgrade(archive, path):
         for member in tar.getmembers():
             files[member.name] = tar.extractfile(member).read()
     manifest = json.loads(files.pop("manifest.json"))
-    manifest.update(version="0.5.5", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
+    manifest.update(
+        version="0.6.1",
+        schema_max=3,
+        schema_target=3,
+        migrations={**manifest["migrations"], "2": "migrations/2.sql"},
+    )
     files["src/social_lurker/__init__.py"] = files["src/social_lurker/__init__.py"].replace(
-        f'"{__version__}"'.encode(), b'"0.5.5"'
+        f'"{__version__}"'.encode(), b'"0.6.1"'
     )
     files["src/social_lurker/db.py"] = files["src/social_lurker/db.py"].replace(
-        b"SCHEMA_VERSION = 1", b"SCHEMA_VERSION = 2"
+        b"SCHEMA_VERSION = 2", b"SCHEMA_VERSION = 3"
     )
-    files["migrations/1.sql"] = b"ALTER TABLE works ADD COLUMN smoke_fixture TEXT;"
+    files["migrations/2.sql"] = b"ALTER TABLE works ADD COLUMN smoke_fixture TEXT;"
     manifest["files"] = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
     files["manifest.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
     with tarfile.open(path, "w:gz") as tar:
@@ -93,11 +98,11 @@ def smoke():
         with lock(install_root / "install.lock", code="MAINTENANCE_BUSY"):
             result = apply_package(install_root, target)
         assert result["changed"] and len(result["migration_results"]) == 2
-        assert current(install_root)[0]["version"] == "0.5.5"
-        assert run(["--version"]).strip() == "0.5.5"
+        assert current(install_root)[0]["version"] == "0.6.1"
+        assert run(["--version"]).strip() == "0.6.1"
         run(["--profile", "娱乐", "list"])
         for profile in FileRegistry(data_root).list():
-            db = Database(profile.db_path, profile.profile_id, create=False, supported_schema=2)
+            db = Database(profile.db_path, profile.profile_id, create=False, supported_schema=3)
             assert db.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             db.close()
         assert (install_root / "versions" / __version__).is_dir()
