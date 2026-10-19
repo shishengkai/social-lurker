@@ -27,9 +27,9 @@ def fixture_upgrade(archive, path):
         for member in tar.getmembers():
             files[member.name] = tar.extractfile(member).read()
     manifest = json.loads(files.pop("manifest.json"))
-    manifest.update(version="0.5.4", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
+    manifest.update(version="0.5.5", schema_max=2, schema_target=2, migrations={"1": "migrations/1.sql"})
     files["src/social_lurker/__init__.py"] = files["src/social_lurker/__init__.py"].replace(
-        f'"{__version__}"'.encode(), b'"0.5.4"'
+        f'"{__version__}"'.encode(), b'"0.5.5"'
     )
     files["src/social_lurker/db.py"] = files["src/social_lurker/db.py"].replace(
         b"SCHEMA_VERSION = 1", b"SCHEMA_VERSION = 2"
@@ -93,8 +93,8 @@ def smoke():
         with lock(install_root / "install.lock", code="MAINTENANCE_BUSY"):
             result = apply_package(install_root, target)
         assert result["changed"] and len(result["migration_results"]) == 2
-        assert current(install_root)[0]["version"] == "0.5.4"
-        assert run(["--version"]).strip() == "0.5.4"
+        assert current(install_root)[0]["version"] == "0.5.5"
+        assert run(["--version"]).strip() == "0.5.5"
         run(["--profile", "娱乐", "list"])
         for profile in FileRegistry(data_root).list():
             db = Database(profile.db_path, profile.profile_id, create=False, supported_schema=2)
